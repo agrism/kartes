@@ -27,11 +27,16 @@ interface Suggestion {
   lat?: number;
 }
 
-const isLocal = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
-const API_BASE = (import.meta as any).env.VITE_API_URL ?? (isLocal ? 'http://localhost:8090' : '');
-const TILES_BASE = (import.meta as any).env.VITE_TILES_URL ?? (isLocal ? 'http://localhost:3000' : '/tiles');
+function getEndpoints() {
+  const isLocal = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+  return {
+    apiBase: (import.meta as any).env.VITE_API_URL || (isLocal ? 'http://localhost:8090' : ''),
+    tilesBase: (import.meta as any).env.VITE_TILES_URL || (isLocal ? 'http://localhost:3000' : '/tiles'),
+  };
+}
 
 export default function App() {
+  const { apiBase: API_BASE, tilesBase: TILES_BASE } = getEndpoints();
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<maplibregl.Map | null>(null);
 
