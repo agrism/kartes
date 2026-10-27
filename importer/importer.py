@@ -384,7 +384,8 @@ def import_energy_certificates(limit: int = 0):
     with psycopg.connect(DB_URL) as conn:
         with conn.cursor() as cur:
             cur.execute("""
-                CREATE UNLOGGED TABLE IF NOT EXISTS staging_energy_certs (
+                DROP TABLE IF EXISTS staging_energy_certs;
+                CREATE UNLOGGED TABLE staging_energy_certs (
                     doc_number text,
                     doc_type text,
                     status text,
@@ -398,7 +399,6 @@ def import_energy_certificates(limit: int = 0):
                     heating_kwh_m2 numeric(10, 2),
                     area_m2 numeric(16, 2)
                 );
-                TRUNCATE TABLE staging_energy_certs;
             """)
             conn.commit()
 
