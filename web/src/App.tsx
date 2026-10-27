@@ -306,6 +306,58 @@ export default function App() {
         },
       });
 
+      // 0.1.1 Natīvais WebGL klastera aplis (ātrs, stabils, zīmējas pie jebkura zoom < 14)
+      m.addLayer({
+        id: 'mix-clusters',
+        type: 'circle',
+        source: 'mix-pts',
+        maxzoom: 14,
+        filter: ['has', 'point_count'],
+        paint: {
+          'circle-color': [
+            'case',
+            ['>', ['get', 't'], 0],
+            '#6d28d9',
+            '#2f8a55',
+          ],
+          'circle-opacity': 0.92,
+          'circle-stroke-color': '#ffffff',
+          'circle-stroke-width': 2,
+          'circle-radius': [
+            'interpolate', ['linear'], ['sqrt', ['get', 'point_count']],
+            1, 14,
+            10, 18,
+            50, 24,
+            200, 32,
+            1000, 42,
+          ],
+        },
+      });
+
+      // 0.1.2 Klastera skaitlis (balts teksts centrā)
+      m.addLayer({
+        id: 'mix-cluster-labels',
+        type: 'symbol',
+        source: 'mix-pts',
+        maxzoom: 14,
+        filter: ['has', 'point_count'],
+        layout: {
+          'text-field': ['to-string', ['get', 'point_count']],
+          'text-font': ['Noto Sans Regular'],
+          'text-size': [
+            'interpolate', ['linear'], ['sqrt', ['get', 'point_count']],
+            1, 11,
+            50, 12.5,
+            1000, 14,
+          ],
+          'text-allow-overlap': true,
+          'text-ignore-placement': true,
+        },
+        paint: {
+          'text-color': '#ffffff',
+        },
+      });
+
       m.addLayer({
         id: 'mix-one',
         type: 'circle',
@@ -319,6 +371,25 @@ export default function App() {
           'circle-stroke-width': 1.5,
         },
       });
+
+      // Klastera klikšķis — pietuvina klasteri
+      m.on('click', 'mix-clusters', (e) => {
+        const features = m.queryRenderedFeatures(e.point, { layers: ['mix-clusters'] });
+        const clusterId = features[0]?.properties?.cluster_id;
+        if (clusterId != null) {
+          const src = m.getSource('mix-pts') as maplibregl.GeoJSONSource;
+          src.getClusterExpansionZoom(clusterId).then((zoom) => {
+            const coords = (features[0].geometry as GeoJSON.Point).coordinates;
+            m.easeTo({
+              center: [coords[0], coords[1]],
+              zoom: Math.min(zoom + 0.5, 14.5),
+              duration: 600,
+            });
+          }).catch(() => {});
+        }
+      });
+      m.on('mouseenter', 'mix-clusters', () => { m.getCanvas().style.cursor = 'pointer'; });
+      m.on('mouseleave', 'mix-clusters', () => { m.getCanvas().style.cursor = ''; });
 
       // 0.2 Atsevišķie sludinājumi pie z >= 13.5 (ss.com - zaļi punkti)
       m.addSource('listings-pts', {
@@ -400,11 +471,11 @@ export default function App() {
         }
       }).catch((e) => console.error('Error loading points:', e));
 
-      // 1. ZEMES VIENĪBAS (Parcels) - detalizētās robežas no z12.5 (kā kadastrakarte.lv)
+      // 1. ZEMES VIENĪBAS (Parcels) - robežas no z11.5
       m.addSource('parcels', {
         type: 'vector',
         tiles: [`${TILES_BASE}/parcels/{z}/{x}/{y}`],
-        minzoom: 12,
+        minzoom: 11,
         maxzoom: 22,
       });
 
@@ -413,12 +484,13 @@ export default function App() {
         type: 'fill',
         source: 'parcels',
         'source-layer': 'parcels',
-        minzoom: 12.5,
+        minzoom: 11.5,
         paint: {
           'fill-color': '#1b6b3a',
           'fill-opacity': [
             'interpolate', ['linear'], ['zoom'],
-            12.5, 0.05,
+            11.5, 0.03,
+            13, 0.06,
             15, 0.12,
           ],
         },
@@ -429,28 +501,30 @@ export default function App() {
         type: 'line',
         source: 'parcels',
         'source-layer': 'parcels',
-        minzoom: 12.5,
+        minzoom: 11.5,
         paint: {
           'line-color': '#1b6b3a',
           'line-width': [
             'interpolate', ['linear'], ['zoom'],
-            12.5, 0.5,
-            14, 1.2,
-            17, 2.0,
+            11.5, 0.35,
+            13, 0.7,
+            15, 1.2,
+            18, 2.0,
           ],
           'line-opacity': [
             'interpolate', ['linear'], ['zoom'],
-            12.5, 0.65,
+            11.5, 0.45,
+            13, 0.7,
             15, 0.85,
           ],
         },
       });
 
-      // 2. ĒKAS (Buildings) - detalizētie ēku korpusi no z13 (kā kadastrakarte.lv)
+      // 2. ĒKAS (Buildings) - ēku korpusi no z12.5
       m.addSource('buildings', {
         type: 'vector',
         tiles: [`${TILES_BASE}/buildings/{z}/{x}/{y}`],
-        minzoom: 13,
+        minzoom: 12,
         maxzoom: 22,
       });
 
@@ -459,12 +533,12 @@ export default function App() {
         type: 'fill',
         source: 'buildings',
         'source-layer': 'buildings',
-        minzoom: 13,
+        minzoom: 12.5,
         paint: {
           'fill-color': '#475569',
           'fill-opacity': [
             'interpolate', ['linear'], ['zoom'],
-            13, 0.4,
+            12.5, 0.3,
             15, 0.7,
           ],
         },
@@ -475,12 +549,12 @@ export default function App() {
         type: 'line',
         source: 'buildings',
         'source-layer': 'buildings',
-        minzoom: 13,
+        minzoom: 12.5,
         paint: {
           'line-color': '#1e293b',
           'line-width': [
             'interpolate', ['linear'], ['zoom'],
-            13, 0.6,
+            12.5, 0.5,
             16, 1.2,
           ],
           'line-opacity': 0.9,
@@ -1227,9 +1301,12 @@ export default function App() {
     setLVis('schools-dots', showSchools);
     setLVis('transports-dots', showTransports);
 
-    if (map.current?.getLayer('mix-one')) {
-      map.current.setLayoutProperty('mix-one', 'visibility', (showListings || showTransactions) ? 'visible' : 'none');
-    }
+    const mixVis = (showListings || showTransactions) ? 'visible' : 'none';
+    ['mix-clusters', 'mix-cluster-labels', 'mix-one'].forEach((id) => {
+      if (map.current?.getLayer(id)) {
+        map.current.setLayoutProperty(id, 'visibility', mixVis);
+      }
+    });
     updateMixMarkersRef.current();
   }, [
     showParcels,
@@ -1504,7 +1581,7 @@ export default function App() {
                     <div className={`lc-row ${showParcels ? 'on' : ''}`} onClick={() => setShowParcels(!showParcels)}>
                       <div className="lc-swatch" style={{ background: '#1b6b3a' }} />
                       <span className="lc-row-name">Zemes vienības (robežas)</span>
-                      {currentZoom < 12.5 && <span className="lc-row-hint">pietuviniet</span>}
+                      {currentZoom < 11.5 && <span className="lc-row-hint">pietuviniet</span>}
                       <button className={`lc-tog ${showParcels ? 'on' : ''}`} type="button" tabIndex={-1}>
                         <div className="lc-tog-k" />
                       </button>
@@ -1512,7 +1589,7 @@ export default function App() {
                     <div className={`lc-row ${showBuildings ? 'on' : ''}`} onClick={() => setShowBuildings(!showBuildings)}>
                       <div className="lc-swatch" style={{ background: '#334155' }} />
                       <span className="lc-row-name">Ēkas un būves</span>
-                      {currentZoom < 13 && <span className="lc-row-hint">pietuviniet</span>}
+                      {currentZoom < 12.5 && <span className="lc-row-hint">pietuviniet</span>}
                       <button className={`lc-tog ${showBuildings ? 'on' : ''}`} type="button" tabIndex={-1}>
                         <div className="lc-tog-k" />
                       </button>
@@ -1893,6 +1970,21 @@ export default function App() {
               )}
             </div>
           </div>
+        </div>
+      {/* Peldošā norāde pietuvināšanai, kad mērogs ir tālāks par zemes vienību robežām */}
+      {currentZoom < 11.5 && showParcels && (
+        <div
+          id="zoom-guidance-pill"
+          onClick={() => map.current?.zoomTo(12.5, { duration: 600 })}
+          title="Nospiediet, lai pietuvinātu karti"
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="11" cy="11" r="8" />
+            <line x1="21" y1="21" x2="16.65" y2="16.65" />
+            <line x1="11" y1="8" x2="11" y2="14" />
+            <line x1="8" y1="11" x2="14" y2="11" />
+          </svg>
+          <span>Pietuviniet, lai redzētu zemes vienību robežas</span>
         </div>
       )}
 

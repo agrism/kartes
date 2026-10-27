@@ -1136,4 +1136,45 @@ body:has(.panel) #zoom-ctl {
   font-size: 12px;
 }
 
+/* ═══════════════════════════════════════════════════════════════
+   PELDOŠĀ MĒROGA NORĀDE (Zoom guidance pill)
+   ═══════════════════════════════════════════════════════════════ */
+#zoom-guidance-pill {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(30, 41, 59, 0.92);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: #f8fafc;
+  padding: 8px 18px;
+  border-radius: 24px;
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.28);
+  cursor: pointer;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  user-select: none;
+}
+
+#zoom-guidance-pill:hover {
+  background: rgba(15, 23, 42, 0.98);
+  transform: translateX(-50%) translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+}
+
+@media (max-width: 768px) {
+  #zoom-guidance-pill {
+    bottom: 76px;
+    font-size: 12px;
+    padding: 7px 14px;
+  }
+}
+
 
