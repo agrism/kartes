@@ -1971,6 +1971,8 @@ export default function App() {
             </div>
           </div>
         </div>
+      )}
+
       {/* Peldošā norāde pietuvināšanai, kad mērogs ir tālāks par zemes vienību robežām */}
       {currentZoom < 11.5 && showParcels && (
         <div
