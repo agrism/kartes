@@ -281,14 +281,56 @@ export default function App() {
         id: 'mix-one',
         type: 'circle',
         source: 'mix-pts',
-        maxzoom: 14,
         filter: ['!', ['has', 'point_count']],
         paint: {
-          'circle-color': ['case', ['==', ['get', 'l'], 1], '#2f8a55', '#7b1fa2'],
-          'circle-radius': 4.5,
+          'circle-color': ['coalesce', ['get', 'color'], ['case', ['==', ['get', 'l'], 1], '#2f8a55', '#7b1fa2']],
+          'circle-radius': [
+            'interpolate', ['linear'], ['zoom'],
+            8, 2.5,
+            12, 3.8,
+            14, 5.0,
+            16, 6.5,
+            18, 8.0,
+          ],
           'circle-stroke-color': '#fff',
-          'circle-stroke-width': 1.5,
+          'circle-stroke-width': [
+            'interpolate', ['linear'], ['zoom'],
+            8, 1.0,
+            14, 1.6,
+            18, 2.0,
+          ],
+          'circle-opacity': 0.95,
         },
+      });
+
+      m.on('mouseenter', 'mix-one', () => {
+        m.getCanvas().style.cursor = 'pointer';
+      });
+      m.on('mouseleave', 'mix-one', () => {
+        m.getCanvas().style.cursor = '';
+      });
+      m.on('click', 'mix-one', (e) => {
+        const feature = e.features?.[0];
+        if (!feature) return;
+        const coords = (feature.geometry as GeoJSON.Point).coordinates;
+        const isL = feature.properties?.l === 1;
+        const col = feature.properties?.color || (isL ? '#2f8a55' : '#7b1fa2');
+        const title = isL
+          ? 'Nekustamā īpašuma sludinājums'
+          : (feature.properties?.color === '#0277bd' ? 'Zemes darījums' : (feature.properties?.color === '#e65100' ? 'Būves / mājas darījums' : 'Dzīvokļa darījums'));
+
+        new maplibregl.Popup({ offset: 12 })
+          .setLngLat([coords[0], coords[1]])
+          .setHTML(`
+            <div style="font-family: 'Hanken Grotesk', -apple-system, sans-serif; font-size: 13px; padding: 2px;">
+              <div style="display:flex; align-items:center; gap:6px; font-weight:700; color:${col}; margin-bottom:4px;">
+                <span style="width:10px; height:10px; border-radius:50%; background:${col}; display:inline-block; flex-shrink:0;"></span>
+                ${title}
+              </div>
+              <div style="color:#666; font-size:11px;">Pietuviniet zemes vienībai, lai apskatītu pilnu kadastra un cenu vēsturi.</div>
+            </div>
+          `)
+          .addTo(m);
       });
 
       m.on('render', updateMixMarkers);
@@ -300,7 +342,7 @@ export default function App() {
         }
       });
 
-      // Ielādējam klasteru punktus (darījumus un sludinājumus)
+      // Ielādējam punktus (darījumus un sludinājumus)
       Promise.all([
         fetch('/data/listings-pts.json').then((r) => r.json()).catch(() => []),
         fetch('/data/tx-pts.json').then((r) => r.json()).catch(() => []),
@@ -311,7 +353,13 @@ export default function App() {
             feats.push({
               type: 'Feature',
               geometry: { type: 'Point', coordinates: [item[0], item[1]] },
-              properties: { l: 1, t: 0 },
+              properties: {
+                l: 1,
+                t: 0,
+                color: '#2f8a55',
+                portal: item[2],
+                type: item[3],
+              },
             });
           }
         }
@@ -322,10 +370,21 @@ export default function App() {
           for (let i = 0; i < n; i++) {
             x += txData[3 * i];
             y += txData[3 * i + 1];
+            const code = txData[3 * i + 2];
+            const typeIdx = code >> 1; // 0=tg, 1=zv, 2=zvb
+            // 0: telpu grupa (dzīvoklis) -> #7b1fa2
+            // 1: zemes vienība (lauki / zeme) -> #0277bd (zili)
+            // 2: zemes vienība ar būvi (māja) -> #e65100 (oranži)
+            const color = typeIdx === 1 ? '#0277bd' : (typeIdx === 2 ? '#e65100' : '#7b1fa2');
             feats.push({
               type: 'Feature',
               geometry: { type: 'Point', coordinates: [x / 1e4, y / 1e4] },
-              properties: { l: 0, t: 1 },
+              properties: {
+                l: 0,
+                t: 1,
+                c: code,
+                color: color,
+              },
             });
           }
         }
@@ -655,6 +714,22 @@ export default function App() {
     }
     if (map.current.getLayer('pollution-dots')) {
       map.current.setLayoutProperty('pollution-dots', 'visibility', visibility(showPollution));
+    }
+    if (map.current.getLayer('mix-one')) {
+      const showL = showListings;
+      const showT = showTransactions;
+      if (!showL && !showT) {
+        map.current.setLayoutProperty('mix-one', 'visibility', 'none');
+      } else {
+        map.current.setLayoutProperty('mix-one', 'visibility', 'visible');
+        if (showL && showT) {
+          map.current.setFilter('mix-one', ['!', ['has', 'point_count']]);
+        } else if (showL) {
+          map.current.setFilter('mix-one', ['all', ['!', ['has', 'point_count']], ['==', ['get', 'l'], 1]]);
+        } else if (showT) {
+          map.current.setFilter('mix-one', ['all', ['!', ['has', 'point_count']], ['==', ['get', 't'], 1]]);
+        }
+      }
     }
     updateMixMarkersRef.current();
   }, [showParcels, showBuildings, showTransactions, showListings, showFloods, showEnergy, showPollution, isSatellite]);
