@@ -153,12 +153,65 @@ func handleParcelInfo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 1. Meklējam ēkas energoefektivitātes sertifikātu
+	type EnergyCert struct {
+		Class        string   `json:"class"`
+		HeatingKwhM2 *float64 `json:"heating_kwh_m2,omitempty"`
+		ValidUntil   string   `json:"valid_until,omitempty"`
+		Status       string   `json:"status,omitempty"`
+	}
+	var cert *EnergyCert
+	var eClass, eValid, eStatus string
+	var eKwh *float64
+	eErr := dbPool.QueryRow(ctx, `
+		SELECT COALESCE(energy_class, ''), COALESCE(to_char(valid_until, 'YYYY-MM-DD'), ''), COALESCE(status, ''), heating_kwh_m2
+		FROM public.energy_certificates
+		WHERE parcel_code = $1 OR building_code LIKE $1 || '%'
+		ORDER BY (CASE WHEN status = 'Ir spēkā' THEN 1 ELSE 2 END), valid_until DESC NULLS LAST
+		LIMIT 1;
+	`, code).Scan(&eClass, &eValid, &eStatus, &eKwh)
+	if eErr == nil && eClass != "" {
+		cert = &EnergyCert{
+			Class:        eClass,
+			HeatingKwhM2: eKwh,
+			ValidUntil:   eValid,
+			Status:       eStatus,
+		}
+	}
+
+	// 2. Meklējam piesārņotās vietas 500m rādiusā
+	type PollutionNearby struct {
+		Name      string  `json:"name"`
+		Category  string  `json:"category"`
+		SiteType  string  `json:"site_type"`
+		DistanceM float64 `json:"distance_m"`
+	}
+	pollutionList := make([]PollutionNearby, 0)
+	pRows, pErr := dbPool.Query(ctx, `
+		SELECT ps.name, ps.category, ps.site_type, ROUND(ST_Distance(p.geom, ps.geom)) as dist
+		FROM public.pollution_sites ps, public.parcels p
+		WHERE p.code = $1 AND ST_DWithin(p.geom, ps.geom, 500)
+		ORDER BY dist ASC
+		LIMIT 3;
+	`, code)
+	if pErr == nil {
+		defer pRows.Close()
+		for pRows.Next() {
+			var ps PollutionNearby
+			if err := pRows.Scan(&ps.Name, &ps.Category, &ps.SiteType, &ps.DistanceM); err == nil {
+				pollutionList = append(pollutionList, ps)
+			}
+		}
+	}
+
 	writeJSON(w, http.StatusOK, map[string]any{
-		"code":            pCode,
-		"address":         address,
-		"area_m2":         areaM2,
-		"status":          status,
-		"cadastral_value": cadValue,
+		"code":             pCode,
+		"address":          address,
+		"area_m2":          areaM2,
+		"status":           status,
+		"cadastral_value":  cadValue,
+		"energy_cert":      cert,
+		"pollution_nearby": pollutionList,
 	})
 }
 
