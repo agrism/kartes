@@ -116,6 +116,8 @@ export default function App() {
     }
   };
 
+  const [currentZoom, setCurrentZoom] = useState(16);
+
   // Inicializē MapLibre karti
   useEffect(() => {
     if (!mapContainer.current || map.current) return;
@@ -126,6 +128,10 @@ export default function App() {
       center: [24.1048, 56.9495], // Vecrīga / Centrs
       zoom: 16,
       attributionControl: false,
+    });
+
+    m.on('zoom', () => {
+      setCurrentZoom(m.getZoom());
     });
 
     m.on('load', () => {
@@ -148,7 +154,7 @@ export default function App() {
       m.addSource('parcels', {
         type: 'vector',
         tiles: [`${TILES_BASE}/parcels/{z}/{x}/{y}`],
-        minzoom: 12,
+        minzoom: 8,
         maxzoom: 22,
       });
 
@@ -157,9 +163,15 @@ export default function App() {
         type: 'fill',
         source: 'parcels',
         'source-layer': 'parcels',
+        minzoom: 8,
         paint: {
           'fill-color': '#1b6b3a',
-          'fill-opacity': 0.12,
+          'fill-opacity': [
+            'interpolate', ['linear'], ['zoom'],
+            8, 0.02,
+            12, 0.06,
+            15, 0.12,
+          ],
         },
       });
 
@@ -168,10 +180,22 @@ export default function App() {
         type: 'line',
         source: 'parcels',
         'source-layer': 'parcels',
+        minzoom: 8,
         paint: {
           'line-color': '#1b6b3a',
-          'line-width': 1.5,
-          'line-opacity': 0.8,
+          'line-width': [
+            'interpolate', ['linear'], ['zoom'],
+            8, 0.25,
+            11, 0.5,
+            14, 1.2,
+            17, 2.0,
+          ],
+          'line-opacity': [
+            'interpolate', ['linear'], ['zoom'],
+            8, 0.35,
+            12, 0.65,
+            15, 0.85,
+          ],
         },
       });
 
@@ -179,7 +203,7 @@ export default function App() {
       m.addSource('buildings', {
         type: 'vector',
         tiles: [`${TILES_BASE}/buildings/{z}/{x}/{y}`],
-        minzoom: 14,
+        minzoom: 10,
         maxzoom: 22,
       });
 
@@ -188,9 +212,15 @@ export default function App() {
         type: 'fill',
         source: 'buildings',
         'source-layer': 'buildings',
+        minzoom: 10,
         paint: {
           'fill-color': '#475569',
-          'fill-opacity': 0.7,
+          'fill-opacity': [
+            'interpolate', ['linear'], ['zoom'],
+            10, 0.25,
+            12, 0.5,
+            15, 0.7,
+          ],
         },
       });
 
@@ -199,9 +229,15 @@ export default function App() {
         type: 'line',
         source: 'buildings',
         'source-layer': 'buildings',
+        minzoom: 10,
         paint: {
           'line-color': '#1e293b',
-          'line-width': 1,
+          'line-width': [
+            'interpolate', ['linear'], ['zoom'],
+            10, 0.3,
+            13, 0.7,
+            16, 1.2,
+          ],
           'line-opacity': 0.9,
         },
       });
@@ -210,7 +246,7 @@ export default function App() {
       m.addSource('transactions', {
         type: 'vector',
         tiles: [`${TILES_BASE}/transactions/{z}/{x}/{y}`],
-        minzoom: 12,
+        minzoom: 6,
         maxzoom: 22,
       });
 
@@ -219,12 +255,15 @@ export default function App() {
         type: 'circle',
         source: 'transactions',
         'source-layer': 'transactions',
+        minzoom: 6,
         paint: {
           'circle-radius': [
             'interpolate', ['linear'], ['zoom'],
-            12, 3,
-            15, 6,
-            18, 9,
+            6, 1.0,
+            8, 1.8,
+            10, 2.8,
+            13, 4.5,
+            16, 7.5,
           ],
           'circle-color': [
             'interpolate', ['linear'], ['to-number', ['get', 'price_per_m2'], 500],
@@ -233,7 +272,13 @@ export default function App() {
             1500, '#f59e0b',  // Premium
             3000, '#ef4444',  // Ekskluzīvs
           ],
-          'circle-stroke-width': 1.5,
+          'circle-stroke-width': [
+            'interpolate', ['linear'], ['zoom'],
+            6, 0,
+            9, 0.5,
+            12, 1.2,
+            15, 1.8,
+          ],
           'circle-stroke-color': '#ffffff',
           'circle-opacity': 0.85,
         },
@@ -243,7 +288,7 @@ export default function App() {
       m.addSource('energy', {
         type: 'vector',
         tiles: [`${TILES_BASE}/energy_certificates/{z}/{x}/{y}`],
-        minzoom: 11,
+        minzoom: 6,
         maxzoom: 22,
       });
 
@@ -252,9 +297,16 @@ export default function App() {
         type: 'circle',
         source: 'energy',
         'source-layer': 'energy_certificates',
-        minzoom: 12,
+        minzoom: 6,
         paint: {
-          'circle-radius': ['interpolate', ['linear'], ['zoom'], 12, 3.5, 15, 6, 18, 9],
+          'circle-radius': [
+            'interpolate', ['linear'], ['zoom'],
+            6, 1.0,
+            8, 2.0,
+            10, 3.2,
+            13, 5.0,
+            17, 8.5,
+          ],
           'circle-color': [
             'match', ['coalesce', ['get', 'energy_class'], ''],
             'A+', '#16a34a',
@@ -267,7 +319,13 @@ export default function App() {
             'G', '#991b1b',
             '#94a3b8',
           ],
-          'circle-stroke-width': 1.5,
+          'circle-stroke-width': [
+            'interpolate', ['linear'], ['zoom'],
+            6, 0,
+            10, 0.5,
+            13, 1.2,
+            16, 1.8,
+          ],
           'circle-stroke-color': '#ffffff',
           'circle-opacity': 0.9,
         },
@@ -277,7 +335,7 @@ export default function App() {
       m.addSource('pollution', {
         type: 'vector',
         tiles: [`${TILES_BASE}/pollution_sites/{z}/{x}/{y}`],
-        minzoom: 8,
+        minzoom: 5,
         maxzoom: 22,
       });
 
@@ -286,8 +344,16 @@ export default function App() {
         type: 'circle',
         source: 'pollution',
         'source-layer': 'pollution_sites',
+        minzoom: 5,
         paint: {
-          'circle-radius': ['interpolate', ['linear'], ['zoom'], 8, 4, 14, 7, 18, 10],
+          'circle-radius': [
+            'interpolate', ['linear'], ['zoom'],
+            5, 2.0,
+            8, 3.8,
+            11, 5.5,
+            14, 7.5,
+            18, 10.0,
+          ],
           'circle-color': [
             'match', ['coalesce', ['get', 'category'], ''],
             'Piesārņota vieta', '#dc2626',
@@ -932,6 +998,13 @@ export default function App() {
               )}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Tālummaiņas paziņojums, kad attālināts ārpus detalizētajiem datiem */}
+      {currentZoom < 9 && (
+        <div id="zoom-hint-toast">
+          🔍 Pietuviniet karti, lai skatītu precīzas zemes vienību robežas un ēkas
         </div>
       )}
     </>
