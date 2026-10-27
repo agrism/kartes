@@ -56,6 +56,7 @@ export default function App() {
   const { apiBase: API_BASE, tilesBase: TILES_BASE } = getEndpoints();
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<maplibregl.Map | null>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
@@ -83,7 +84,12 @@ export default function App() {
       zoom: 16,
     });
 
-    m.addControl(new maplibregl.NavigationControl(), 'bottom-right');
+    const geolocate = new maplibregl.GeolocateControl({
+      positionOptions: { enableHighAccuracy: true },
+      trackUserLocation: true,
+    });
+    m.addControl(geolocate, 'bottom-right');
+    m.addControl(new maplibregl.NavigationControl({ showCompass: true }), 'bottom-right');
 
     m.on('load', () => {
       // 0. Satelīta aerofoto pamatne (Esri World Imagery)
@@ -429,6 +435,10 @@ export default function App() {
     setSearchQuery(s.address);
     setSuggestions([]);
 
+    if (searchInputRef.current) {
+      searchInputRef.current.blur();
+    }
+
     if (s.lng && s.lat && map.current) {
       map.current.flyTo({
         center: [s.lng, s.lat],
@@ -451,12 +461,26 @@ export default function App() {
         <div className="search-container">
           <span className="search-icon">🔍</span>
           <input
+            ref={searchInputRef}
             type="text"
             className="search-input"
             placeholder="Meklēt adresi (piem. Brīvības 38, Doma laukums)..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
+          {searchQuery && (
+            <button
+              type="button"
+              className="search-clear-btn"
+              onClick={() => {
+                setSearchQuery('');
+                setSuggestions([]);
+              }}
+              aria-label="Notīrīt meklēšanu"
+            >
+              ✕
+            </button>
+          )}
 
           {suggestions.length > 0 && (
             <div className="suggestions-dropdown">
@@ -474,64 +498,62 @@ export default function App() {
           )}
         </div>
 
-        {/* Slāņu ieslēgšanas/izslēgšanas poga */}
-        <div className="layer-pills">
-          <button
-            className={`layer-pill ${isSatellite ? 'active-dark' : ''}`}
-            onClick={() => setIsSatellite(!isSatellite)}
-          >
-            {isSatellite ? '🗺️ Karte' : '🛰️ Satelīts'}
-          </button>
-          <button
-            className={`layer-pill ${showParcels ? 'active-green' : ''}`}
-            onClick={() => setShowParcels(!showParcels)}
-          >
-            🗺️ Zemes gabali
-          </button>
-          <button
-            className={`layer-pill ${showBuildings ? 'active-slate' : ''}`}
-            onClick={() => setShowBuildings(!showBuildings)}
-          >
-            🏢 Ēkas
-          </button>
-          <button
-            className={`layer-pill ${showTransactions ? 'active-blue' : ''}`}
-            onClick={() => setShowTransactions(!showTransactions)}
-          >
-            💶 Darījumi
-          </button>
-          <button
-            className={`layer-pill ${showFloods ? 'active-cyan' : ''}`}
-            onClick={() => setShowFloods(!showFloods)}
-            title="LVĢMC oficiālās plūdu riska kartes (10, 100 un 200 gadu scenāriji)"
-          >
-            🌊 Plūdi
-          </button>
-          <button
-            className={`layer-pill ${showEnergy ? 'active-amber' : ''}`}
-            onClick={() => setShowEnergy(!showEnergy)}
-            title="BVKB ēku energoefektivitātes klases (A+ līdz G)"
-          >
-            ⚡ Enerģija
-          </button>
-          <button
-            className={`layer-pill ${showPollution ? 'active-red' : ''}`}
-            onClick={() => setShowPollution(!showPollution)}
-            title="VVD reģistrētās piesārņotās un potenciāli piesārņotās vietas"
-          >
-            ⚠️ Piesārņojums
-          </button>
+        {/* Slāņu ieslēgšanas/izslēgšanas poga ar horizontālu ritināšanu telefonā */}
+        <div className="layer-pills-container">
+          <div className="layer-pills">
+            <button
+              className={`layer-pill ${isSatellite ? 'active-dark' : ''}`}
+              onClick={() => setIsSatellite(!isSatellite)}
+            >
+              {isSatellite ? '🗺️ Karte' : '🛰️ Satelīts'}
+            </button>
+            <button
+              className={`layer-pill ${showParcels ? 'active-green' : ''}`}
+              onClick={() => setShowParcels(!showParcels)}
+            >
+              🗺️ Zemes gabali
+            </button>
+            <button
+              className={`layer-pill ${showBuildings ? 'active-slate' : ''}`}
+              onClick={() => setShowBuildings(!showBuildings)}
+            >
+              🏢 Ēkas
+            </button>
+            <button
+              className={`layer-pill ${showTransactions ? 'active-blue' : ''}`}
+              onClick={() => setShowTransactions(!showTransactions)}
+            >
+              💶 Darījumi
+            </button>
+            <button
+              className={`layer-pill ${showEnergy ? 'active-amber' : ''}`}
+              onClick={() => setShowEnergy(!showEnergy)}
+              title="BVKB ēku energoefektivitātes klases (A+ līdz G)"
+            >
+              ⚡ Enerģija
+            </button>
+            <button
+              className={`layer-pill ${showPollution ? 'active-red' : ''}`}
+              onClick={() => setShowPollution(!showPollution)}
+              title="VVD reģistrētās piesārņotās un potenciāli piesārņotās vietas"
+            >
+              ⚠️ Piesārņojums
+            </button>
+          </div>
         </div>
 
         {/* Statistika */}
         <div className="stat-badge">
-          <span>🇱🇻 VZD + LVĢMC + BVKB</span>
+          <span>🇱🇻 VZD + BVKB + VVD</span>
         </div>
       </div>
 
-      {/* Sānjoslas info panelis */}
+      {/* Sānjoslas / Mobilā paneļa info panelis */}
       {selectedParcel && (
         <div className="panel">
+          <div className="sheet-handle-bar">
+            <div className="sheet-handle" />
+          </div>
           <div className="panel-header">
             <div>
               <div style={{ fontSize: '11px', textTransform: 'uppercase', opacity: 0.85, letterSpacing: '0.05em' }}>
