@@ -468,11 +468,12 @@ def import_energy_certificates(limit: int = 0):
                     cadastre_codes, building_code, parcel_code, address,
                     energy_class, heating_kwh_m2, area_m2
                 )
-                SELECT 
+                SELECT DISTINCT ON (doc_number)
                     doc_number, doc_type, status, issue_date, valid_until,
                     cadastre_codes, building_code, parcel_code, address,
                     energy_class, heating_kwh_m2, area_m2
                 FROM staging_energy_certs
+                ORDER BY doc_number, issue_date DESC NULLS LAST
                 ON CONFLICT (doc_number) DO UPDATE
                 SET status = EXCLUDED.status,
                     valid_until = EXCLUDED.valid_until,
