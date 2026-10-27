@@ -395,8 +395,8 @@ def import_energy_certificates(limit: int = 0):
                     parcel_code varchar(11),
                     address text,
                     energy_class varchar(10),
-                    heating_kwh_m2 numeric(8, 2),
-                    area_m2 numeric(10, 2)
+                    heating_kwh_m2 numeric(10, 2),
+                    area_m2 numeric(16, 2)
                 );
                 TRUNCATE TABLE staging_energy_certs;
             """)
@@ -429,14 +429,15 @@ def import_energy_certificates(limit: int = 0):
                         addr = row.get("Objekta_adrese", "").strip()
                         e_class = row.get("Ekas_energoefektivitates_klase", "").strip()
                         
-                        def parse_float(val):
+                        def parse_float(val, max_val=999999999.0):
                             try:
-                                return float((val or "").replace(",", ".").strip())
+                                v = float((val or "").replace(",", ".").strip())
+                                return round(v, 2) if 0 <= v <= max_val else None
                             except Exception:
                                 return None
                         
-                        heating_kwh = parse_float(row.get("Energija_apkurei_kwh_m_2_gada"))
-                        area_m2 = parse_float(row.get("Kopeja_platiba_m2"))
+                        heating_kwh = parse_float(row.get("Energija_apkurei_kwh_m_2_gada"), 999999.0)
+                        area_m2 = parse_float(row.get("Kopeja_platiba_m2"), 999999999.0)
 
                         # Analizē kadastra kodus (14 zīmes = ēka, 11 zīmes = zeme)
                         b_code = None
