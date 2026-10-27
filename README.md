@@ -10,11 +10,11 @@ Moderna, neatkarīga un ārkārtīgi ātra Latvijas kadastra, nekustamo īpašum
 
 | Ports | Serviss | Konteiners | Tehnoloģija | Apraksts & Piekļuve |
 | :---: | :--- | :--- | :--- | :--- |
-| **`5173`** | **Frontend UI** | `kartes-web` | React 18 + Vite + MapLibre | Lietotāja saskarne un karte: [http://localhost:5173](http://localhost:5173) |
-| **`8080`** | **Backend API** | `kartes-api` | Go 1.23 + `pgx/v5` | REST API serviss: [http://localhost:8080/api/health](http://localhost:8080/api/health) |
+| **`5180`** | **Frontend UI** | `kartes-web` | React 18 + Vite + MapLibre | Lietotāja saskarne un karte: [http://localhost:5180](http://localhost:5180) |
+| **`8090`** | **Backend API** | `kartes-api` | Go 1.23 + `pgx/v5` | REST API serviss: [http://localhost:8090/api/health](http://localhost:8090/api/health) |
 | **`3000`** | **Tile Server** | `kartes-martin` | Martin (Rust) | MVT vektoru flīžu katalogs: [http://localhost:3000/catalog](http://localhost:3000/catalog) |
-| **`5432`** | **Datubāze** | `kartes-db` | PostGIS 3.5 (PostgreSQL 17) | Ģeotelpiskais kodols (Host: `localhost:5432`) |
-| **`6379`** | **In-Memory Kešs**| `kartes-cache` | Dragonfly (C++) | 25× ātrāks Redis aizstājējs zibenīgai atmiņas kešošanai |
+| **`5432`** | **Datubāze** | `kartes-db` | PostGIS 3.4 (PostgreSQL 16) | Ģeotelpiskais kodols (Host: `localhost:5432`) |
+| **`6379`** | **In-Memory Kešs**| `kartes-cache` | Redis 7 | Zibenīgs in-memory kešs |
 | **`5050`** | **DB Pārlūks** *(izvēles)*| `kartes-pgadmin`| pgAdmin 4 | Datubāzes Web GUI: [http://localhost:5050](http://localhost:5050) |
 
 ---
@@ -24,12 +24,12 @@ Moderna, neatkarīga un ārkārtīgi ātra Latvijas kadastra, nekustamo īpašum
 Pārliecinies, ka tavā datorā ir palaists Docker, un izpildi vienu komandu:
 
 ```bash
-docker compose up -d --build
+docker compose up -d
 ```
 
 Pēc dažu sekunžu būvēšanas un starta:
-1. Atver karti pārlūkā: **[http://localhost:5173](http://localhost:5173)**
-2. Pārbaudi API statusu: **[http://localhost:8080/api/health](http://localhost:8080/api/health)**
+1. Atver karti pārlūkā: **[http://localhost:5180](http://localhost:5180)**
+2. Pārbaudi API statusu: **[http://localhost:8090/api/health](http://localhost:8090/api/health)**
 3. Apskati MVT flīžu katalogu: **[http://localhost:3000/catalog](http://localhost:3000/catalog)**
 
 ---
@@ -40,19 +40,19 @@ Go REST API nodrošina tūlītēju atbildi (< 2 ms):
 
 * **Veselības pārbaude:**
   ```bash
-  curl http://localhost:8080/api/health
+  curl http://localhost:8090/api/health
   ```
 * **Adrešu meklēšana un ieteikumi (Autofinišs ar latviešu valodas atbalstu):**
   ```bash
-  curl "http://localhost:8080/api/address-suggest?q=Doma"
+  curl "http://localhost:8090/api/address-suggest?q=Doma"
   ```
 * **Zemes vienības profils (Pēc kadastra numura):**
   ```bash
-  curl "http://localhost:8080/api/parcel-info?code=01000070001"
+  curl "http://localhost:8090/api/parcel-info?code=01000070001"
   ```
 * **Īpašuma vēsturiskie darījumi (VZD NĪTB):**
   ```bash
-  curl "http://localhost:8080/api/transactions?cadastre=01000070001"
+  curl "http://localhost:8090/api/transactions?cadastre=01000070001"
   ```
 * **Martin vektoru flīzes:**
   ```text

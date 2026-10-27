@@ -9,9 +9,9 @@ WORKDIR /app
 COPY go.mod ./
 RUN go mod download
 
-# Nokopē pārējo kodu un nokompilē statisku mašīnkoda bināro failu
+# Nokopē pārējo kodu, sakārto atkarības un nokompilē statisku mašīnkoda bināro failu
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /app/kartes-api main.go
+RUN go mod tidy && CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /app/kartes-api main.go
 
 # 2. Minimālais produkcijas konteiners (~15 MB)
 FROM alpine:3.20

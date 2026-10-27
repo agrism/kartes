@@ -25,8 +25,8 @@ interface Suggestion {
   address: string;
 }
 
-const API_BASE = 'http://localhost:8080';
-const TILES_BASE = 'http://localhost:3000';
+const API_BASE = (import.meta as any).env.VITE_API_URL || 'http://localhost:8090';
+const TILES_BASE = (import.meta as any).env.VITE_TILES_URL || 'http://localhost:3000';
 
 export default function App() {
   const mapContainer = useRef<HTMLDivElement>(null);

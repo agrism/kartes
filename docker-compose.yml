@@ -1,7 +1,7 @@
 services:
-  # 1. PostgreSQL 17 ar PostGIS 3.5 telpiskajam datu kodolam
+  # 1. PostgreSQL 16 ar PostGIS 3.4 telpiskajam datu kodolam (ARM64 un AMD64 atbalsts)
   db:
-    image: postgis/postgis:17-3.5
+    image: postgis/postgis:16-3.4
     container_name: kartes-db
     restart: unless-stopped
     environment:
@@ -47,14 +47,14 @@ services:
       PORT: 8080
       DATABASE_URL: postgresql://${POSTGRES_USER:-kartes}:${POSTGRES_PASSWORD:-kartes_secret_password}@db:5432/${POSTGRES_DB:-kartes}
     ports:
-      - "${API_PORT:-8080}:8080"
+      - "${API_PORT:-8090}:8080"
     depends_on:
       db:
         condition: service_healthy
 
-  # 4. In-Memory Cache: Dragonfly (25x ātrāks par standarta Redis, pilnībā savietojams)
+  # 4. In-Memory Cache: Redis 7
   cache:
-    image: docker.dragonflydb.io/dragonflydb/dragonfly:latest
+    image: redis:7-alpine
     container_name: kartes-cache
     restart: unless-stopped
     ports:
@@ -68,13 +68,13 @@ services:
     container_name: kartes-web
     restart: unless-stopped
     ports:
-      - "${WEB_PORT:-5173}:5173"
+      - "${WEB_PORT:-5180}:5173"
     volumes:
       - ./web:/app
       - /app/node_modules
     environment:
-      - VITE_API_URL=http://localhost:8080
-      - VITE_TILES_URL=http://localhost:3000
+      - VITE_API_URL=http://localhost:${API_PORT:-8090}
+      - VITE_TILES_URL=http://localhost:${MARTIN_PORT:-3000}
     depends_on:
       - api
       - martin
