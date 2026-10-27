@@ -35,7 +35,7 @@ CREATE INDEX IF NOT EXISTS idx_parcels_address_trgm ON public.parcels USING GIN 
 CREATE TABLE IF NOT EXISTS public.buildings (
     id BIGSERIAL PRIMARY KEY,
     code VARCHAR(14) UNIQUE NOT NULL,      -- Būves kadastra apzīmējums (piem., 01000670001001)
-    parcel_code VARCHAR(11) REFERENCES public.parcels(code) ON DELETE SET NULL,
+    parcel_code VARCHAR(11),               -- Saistītā zemes vienība
     floors INT,                            -- Virszemes stāvi
     construction_year INT,                 -- Ekspluatācijā pieņemšanas gads
     depreciation_pct INT,                  -- Fiziskais nolietojums %
@@ -65,7 +65,18 @@ CREATE INDEX IF NOT EXISTS idx_transactions_geom ON public.transactions USING GI
 CREATE INDEX IF NOT EXISTS idx_transactions_deal_date ON public.transactions (deal_date);
 CREATE INDEX IF NOT EXISTS idx_transactions_cadastre ON public.transactions (cadastre_code);
 
--- 6. Pārbaudes dati (Demo zemes vienība un darījums Vecrīgā pie Doma baznīcas),
+-- 6. Bāzes tabula: Valsts adrešu reģistrs (VAR)
+CREATE TABLE IF NOT EXISTS public.addresses (
+    id BIGSERIAL PRIMARY KEY,
+    code VARCHAR(20) UNIQUE,
+    address TEXT NOT NULL,
+    geom GEOMETRY(Point, 3857)
+);
+
+CREATE INDEX IF NOT EXISTS idx_addresses_geom ON public.addresses USING GIST (geom);
+CREATE INDEX IF NOT EXISTS idx_addresses_trgm ON public.addresses USING GIN (address gin_trgm_ops);
+
+-- 7. Pārbaudes dati (Demo zemes vienība un darījums Vecrīgā pie Doma baznīcas),
 -- lai Martin tūlīt pēc startēšanas katalogā /catalog uzrādītu tabulas un datus
 INSERT INTO public.parcels (code, address, area_m2, status, cadastral_value, geom)
 VALUES (

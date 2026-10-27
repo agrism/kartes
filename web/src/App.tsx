@@ -23,6 +23,8 @@ interface Transaction {
 interface Suggestion {
   code: string;
   address: string;
+  lng?: number;
+  lat?: number;
 }
 
 const API_BASE = (import.meta as any).env.VITE_API_URL || 'http://localhost:8090';
@@ -38,6 +40,11 @@ export default function App() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(false);
 
+  // Slāņu redzamība
+  const [showParcels, setShowParcels] = useState(true);
+  const [showBuildings, setShowBuildings] = useState(true);
+  const [showTransactions, setShowTransactions] = useState(true);
+
   // Inicializē MapLibre karti
   useEffect(() => {
     if (!mapContainer.current || map.current) return;
@@ -45,14 +52,14 @@ export default function App() {
     const m = new maplibregl.Map({
       container: mapContainer.current,
       style: 'https://tiles.openfreemap.org/styles/positron',
-      center: [24.1048, 56.9495], // Vecrīga / Doma laukums
-      zoom: 16.5,
+      center: [24.1048, 56.9495], // Vecrīga / Centrs
+      zoom: 16,
     });
 
     m.addControl(new maplibregl.NavigationControl(), 'bottom-right');
 
     m.on('load', () => {
-      // 1. Pievieno Martin MVT vektoru flīžu avotu
+      // 1. ZEMES VIENĪBAS (Parcels)
       m.addSource('parcels', {
         type: 'vector',
         tiles: [`${TILES_BASE}/parcels/{z}/{x}/{y}`],
@@ -60,7 +67,6 @@ export default function App() {
         maxzoom: 22,
       });
 
-      // 2. Zemes vienību laukuma aizpildījums
       m.addLayer({
         id: 'parcels-fill',
         type: 'fill',
@@ -68,11 +74,10 @@ export default function App() {
         'source-layer': 'parcels',
         paint: {
           'fill-color': '#1b6b3a',
-          'fill-opacity': 0.15,
+          'fill-opacity': 0.12,
         },
       });
 
-      // 3. Zemes vienību robežlīnijas
       m.addLayer({
         id: 'parcels-line',
         type: 'line',
@@ -80,17 +85,101 @@ export default function App() {
         'source-layer': 'parcels',
         paint: {
           'line-color': '#1b6b3a',
-          'line-width': 2,
+          'line-width': 1.5,
+          'line-opacity': 0.8,
         },
       });
 
-      // Kursors un klikšķa notikums uz zemes vienības
-      m.on('mouseenter', 'parcels-fill', () => {
-        m.getCanvas().style.cursor = 'pointer';
+      // 2. ĒKAS (Buildings)
+      m.addSource('buildings', {
+        type: 'vector',
+        tiles: [`${TILES_BASE}/buildings/{z}/{x}/{y}`],
+        minzoom: 14,
+        maxzoom: 22,
       });
 
-      m.on('mouseleave', 'parcels-fill', () => {
-        m.getCanvas().style.cursor = '';
+      m.addLayer({
+        id: 'buildings-fill',
+        type: 'fill',
+        source: 'buildings',
+        'source-layer': 'buildings',
+        paint: {
+          'fill-color': '#475569',
+          'fill-opacity': 0.7,
+        },
+      });
+
+      m.addLayer({
+        id: 'buildings-line',
+        type: 'line',
+        source: 'buildings',
+        'source-layer': 'buildings',
+        paint: {
+          'line-color': '#1e293b',
+          'line-width': 1,
+          'line-opacity': 0.9,
+        },
+      });
+
+      // 3. DARĪJUMI (Transactions)
+      m.addSource('transactions', {
+        type: 'vector',
+        tiles: [`${TILES_BASE}/transactions/{z}/{x}/{y}`],
+        minzoom: 12,
+        maxzoom: 22,
+      });
+
+      m.addLayer({
+        id: 'transactions-circle',
+        type: 'circle',
+        source: 'transactions',
+        'source-layer': 'transactions',
+        paint: {
+          'circle-radius': [
+            'interpolate', ['linear'], ['zoom'],
+            12, 3,
+            15, 6,
+            18, 9,
+          ],
+          'circle-color': [
+            'interpolate', ['linear'], ['coalesce', ['get', 'price_per_m2'], 500],
+            50, '#10b981',    // Zema cena / lauki
+            500, '#0284c7',   // Vidēja cena
+            1500, '#f59e0b',  // Premium
+            3000, '#ef4444',  // Ekskluzīvs
+          ],
+          'circle-stroke-width': 1.5,
+          'circle-stroke-color': '#ffffff',
+          'circle-opacity': 0.85,
+        },
+      });
+
+      // Interaktivitāte kursoram
+      const interactiveLayers = ['parcels-fill', 'buildings-fill', 'transactions-circle'];
+      interactiveLayers.forEach((layer) => {
+        m.on('mouseenter', layer, () => {
+          m.getCanvas().style.cursor = 'pointer';
+        });
+        m.on('mouseleave', layer, () => {
+          m.getCanvas().style.cursor = '';
+        });
+      });
+
+      // Klikšķa apstrāde
+      m.on('click', 'transactions-circle', (e) => {
+        if (!e.features || !e.features[0]) return;
+        const cadCode = e.features[0].properties?.cadastre_code;
+        if (cadCode) {
+          fetchParcelDetails(cadCode);
+        }
+      });
+
+      m.on('click', 'buildings-fill', (e) => {
+        if (!e.features || !e.features[0]) return;
+        const parcelCode = e.features[0].properties?.parcel_code;
+        if (parcelCode) {
+          fetchParcelDetails(parcelCode);
+        }
       });
 
       m.on('click', 'parcels-fill', (e) => {
@@ -110,14 +199,42 @@ export default function App() {
     };
   }, []);
 
+  // Slāņu redzamības pārslēgšana
+  useEffect(() => {
+    if (!map.current || !map.current.isStyleLoaded()) return;
+    const visibility = (show: boolean) => (show ? 'visible' : 'none');
+
+    if (map.current.getLayer('parcels-fill')) {
+      map.current.setLayoutProperty('parcels-fill', 'visibility', visibility(showParcels));
+      map.current.setLayoutProperty('parcels-line', 'visibility', visibility(showParcels));
+    }
+    if (map.current.getLayer('buildings-fill')) {
+      map.current.setLayoutProperty('buildings-fill', 'visibility', visibility(showBuildings));
+      map.current.setLayoutProperty('buildings-line', 'visibility', visibility(showBuildings));
+    }
+    if (map.current.getLayer('transactions-circle')) {
+      map.current.setLayoutProperty('transactions-circle', 'visibility', visibility(showTransactions));
+    }
+  }, [showParcels, showBuildings, showTransactions]);
+
   // Iegūst zemes vienības datus un darījumus no Go API
   const fetchParcelDetails = async (code: string) => {
+    if (!code) return;
     setLoading(true);
     try {
       const res = await fetch(`${API_BASE}/api/parcel-info?code=${encodeURIComponent(code)}`);
       if (res.ok) {
         const data = await res.json();
         setSelectedParcel(data);
+      } else {
+        // Ja nav zemes vienības, rādām vismaz kodu
+        setSelectedParcel({
+          code,
+          address: '',
+          area_m2: 0,
+          status: 'Reģistrēts',
+          cadastral_value: 0,
+        });
       }
 
       // Ielādē darījumus
@@ -152,7 +269,7 @@ export default function App() {
       } catch (e) {
         console.error(e);
       }
-    }, 200);
+    }, 180);
 
     return () => clearTimeout(timer);
   }, [searchQuery]);
@@ -160,30 +277,41 @@ export default function App() {
   const handleSelectSuggestion = (s: Suggestion) => {
     setSearchQuery(s.address);
     setSuggestions([]);
-    fetchParcelDetails(s.code);
+
+    if (s.lng && s.lat && map.current) {
+      map.current.flyTo({
+        center: [s.lng, s.lat],
+        zoom: 18,
+        essential: true,
+      });
+    }
+
+    if (s.code) {
+      fetchParcelDetails(s.code);
+    }
   };
 
   return (
     <>
       <div id="map" ref={mapContainer} />
 
-      {/* Meklēšanas josla */}
+      {/* Galvenā augšējā josla ar meklēšanu un slāņu kontroli */}
       <div className="top-bar">
         <div className="search-container">
           <span className="search-icon">🔍</span>
           <input
             type="text"
             className="search-input"
-            placeholder="Meklēt adresi vai kadastra numuru..."
+            placeholder="Meklēt adresi (piem. Brīvības 38, Doma laukums)..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
 
           {suggestions.length > 0 && (
             <div className="suggestions-dropdown">
-              {suggestions.map((s) => (
+              {suggestions.map((s, idx) => (
                 <div
-                  key={s.code}
+                  key={`${s.code}-${idx}`}
                   className="suggestion-item"
                   onClick={() => handleSelectSuggestion(s)}
                 >
@@ -194,6 +322,33 @@ export default function App() {
             </div>
           )}
         </div>
+
+        {/* Slāņu ieslēgšanas/izslēgšanas poga */}
+        <div className="layer-pills">
+          <button
+            className={`layer-pill ${showParcels ? 'active-green' : ''}`}
+            onClick={() => setShowParcels(!showParcels)}
+          >
+            🗺️ Zemes gabali
+          </button>
+          <button
+            className={`layer-pill ${showBuildings ? 'active-slate' : ''}`}
+            onClick={() => setShowBuildings(!showBuildings)}
+          >
+            🏢 Ēkas
+          </button>
+          <button
+            className={`layer-pill ${showTransactions ? 'active-blue' : ''}`}
+            onClick={() => setShowTransactions(!showTransactions)}
+          >
+            💶 Darījumi
+          </button>
+        </div>
+
+        {/* Statistika */}
+        <div className="stat-badge">
+          <span>🇱🇻 VZD Atvērtie dati</span>
+        </div>
       </div>
 
       {/* Sānjoslas info panelis */}
@@ -201,10 +356,10 @@ export default function App() {
         <div className="panel">
           <div className="panel-header">
             <div>
-              <div style={{ fontSize: '11px', textTransform: 'uppercase', opacity: 0.85 }}>
+              <div style={{ fontSize: '11px', textTransform: 'uppercase', opacity: 0.85, letterSpacing: '0.05em' }}>
                 Zemes vienība
               </div>
-              <div className="panel-title">{selectedParcel.address || 'Nav adreses'}</div>
+              <div className="panel-title">{selectedParcel.address || 'Nav piesaistītas adreses'}</div>
             </div>
             <button className="close-btn" onClick={() => setSelectedParcel(null)}>
               ✕
@@ -215,7 +370,7 @@ export default function App() {
             <div className="kpi-grid">
               <div className="kpi-card">
                 <div className="kpi-label">Kadastra numurs</div>
-                <div className="kpi-value mono" style={{ fontSize: '14px' }}>
+                <div className="kpi-value mono" style={{ fontSize: '13px' }}>
                   {selectedParcel.code}
                 </div>
               </div>
@@ -223,7 +378,7 @@ export default function App() {
               <div className="kpi-card">
                 <div className="kpi-label">Zemes platība</div>
                 <div className="kpi-value">
-                  {selectedParcel.area_m2.toLocaleString('lv-LV')} m²
+                  {selectedParcel.area_m2 ? `${selectedParcel.area_m2.toLocaleString('lv-LV')} m²` : '—'}
                 </div>
               </div>
 
@@ -238,7 +393,7 @@ export default function App() {
 
               <div className="kpi-card">
                 <div className="kpi-label">Statuss</div>
-                <div className="kpi-value" style={{ fontSize: '14px', textTransform: 'capitalize' }}>
+                <div className="kpi-value" style={{ fontSize: '13px', textTransform: 'capitalize' }}>
                   {selectedParcel.status || 'Aktīvs'}
                 </div>
               </div>
@@ -250,8 +405,8 @@ export default function App() {
                 VZD Darījumu vēsture ({transactions.length})
               </div>
               {transactions.length === 0 ? (
-                <div style={{ fontSize: '13px', color: '#6b7280' }}>
-                  Šim īpašumam reģistrētu darījumu nav.
+                <div style={{ fontSize: '13px', color: '#6b7280', padding: '6px 0' }}>
+                  Šim kadastra numuram publisku darījumu nav reģistrēts.
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -259,20 +414,25 @@ export default function App() {
                     <div
                       key={t.deal_id}
                       style={{
-                        padding: '10px',
+                        padding: '10px 12px',
                         background: '#fcfaf6',
                         borderRadius: '8px',
                         border: '1px solid #eee5d3',
                       }}
                     >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 600 }}>
-                        <span>{t.amount_eur.toLocaleString('lv-LV')} €</span>
-                        <span style={{ color: '#0277bd', fontSize: '12px' }}>
-                          {t.price_per_m2 ? `${t.price_per_m2.toLocaleString('lv-LV')} €/m²` : ''}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontWeight: 700, fontSize: '15px' }}>
+                          {t.amount_eur.toLocaleString('lv-LV')} €
                         </span>
+                        {t.price_per_m2 > 0 && (
+                          <span style={{ color: '#0277bd', fontWeight: 600, fontSize: '12px' }}>
+                            {Math.round(t.price_per_m2).toLocaleString('lv-LV')} €/m²
+                          </span>
+                        )}
                       </div>
                       <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '4px' }}>
-                        Datums: {new Date(t.deal_date).toLocaleDateString('lv-LV')} · Tips: {t.property_type.toUpperCase()}
+                        Datums: {new Date(t.deal_date).toLocaleDateString('lv-LV')} · {t.property_type.toUpperCase()}
+                        {t.area_m2 > 0 && ` · ${t.area_m2.toLocaleString('lv-LV')} m²`}
                       </div>
                     </div>
                   ))}

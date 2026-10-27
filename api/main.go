@@ -173,12 +173,18 @@ func handleAddressSuggest(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
-	// Trigramu līdzības meklēšana ar unaccent normalizāciju
+	// Ātrā adrešu meklēšana ar telpisko zemes vienības piesaisti
 	query := `
-		SELECT code, address
-		FROM public.parcels
-		WHERE lv_normalize(address) ILIKE '%' || lv_normalize($1) || '%'
-		ORDER BY similarity(lv_normalize(address), lv_normalize($1)) DESC
+		SELECT 
+			COALESCE(p.code, a.code, ''), 
+			a.address,
+			COALESCE(ST_X(ST_Transform(a.geom, 4326)), 0),
+			COALESCE(ST_Y(ST_Transform(a.geom, 4326)), 0)
+		FROM public.addresses a
+		LEFT JOIN LATERAL (
+			SELECT code FROM public.parcels p WHERE ST_Intersects(p.geom, a.geom) LIMIT 1
+		) p ON true
+		WHERE lv_normalize(a.address) ILIKE '%' || replace(lv_normalize($1), ' ', '%') || '%'
 		LIMIT 10;
 	`
 
@@ -190,14 +196,16 @@ func handleAddressSuggest(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 
 	type Suggestion struct {
-		Code    string `json:"code"`
-		Address string `json:"address"`
+		Code    string  `json:"code"`
+		Address string  `json:"address"`
+		Lng     float64 `json:"lng,omitempty"`
+		Lat     float64 `json:"lat,omitempty"`
 	}
 
 	var results []Suggestion
 	for rows.Next() {
 		var s Suggestion
-		if err := rows.Scan(&s.Code, &s.Address); err == nil {
+		if err := rows.Scan(&s.Code, &s.Address, &s.Lng, &s.Lat); err == nil {
 			results = append(results, s)
 		}
 	}

@@ -97,6 +97,25 @@ services:
     profiles:
       - tools
 
+  # 7. Data Importer: VZD atvērto datu (kadastrs, darījumi, adreses) ielādes rīks
+  importer:
+    build:
+      context: ./importer
+      dockerfile: Dockerfile
+    container_name: kartes-importer
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-kartes}:${POSTGRES_PASSWORD:-kartes_secret_password}@db:5432/${POSTGRES_DB:-kartes}
+    volumes:
+      - ./importer:/app
+      - data_cache:/app/cache
+    depends_on:
+      db:
+        condition: service_healthy
+    profiles:
+      - tools
+
 volumes:
   pg_data:
+    driver: local
+  data_cache:
     driver: local
