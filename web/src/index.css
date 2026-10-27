@@ -1025,10 +1025,31 @@ body:has(.panel) #zoom-ctl {
   border-radius: 20px;
   font-size: 13px;
   font-weight: 500;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
-  pointer-events: none;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
   white-space: nowrap;
   animation: fadeIn 0.25s ease;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transition: transform 0.15s ease, background 0.15s ease;
+  user-select: none;
+}
+
+#zoom-hint-toast:hover {
+  background: rgba(26, 18, 9, 0.96);
+  transform: translate(-50%, -2px);
+}
+
+.lc-row-hint {
+  font-size: 11px;
+  color: #8c7e6c;
+  font-weight: 500;
+  margin-left: auto;
+  margin-right: 8px;
+  background: #f1ebd8;
+  padding: 1px 6px;
+  border-radius: 6px;
+  white-space: nowrap;
 }
 
 @keyframes fadeIn {

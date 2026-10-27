@@ -128,13 +128,15 @@ export default function App() {
       center: [24.1048, 56.9495], // Vecrīga / Centrs
       zoom: 16,
       attributionControl: false,
+      hash: true,
     });
 
-    m.on('zoom', () => {
-      setCurrentZoom(m.getZoom());
-    });
+    const updateZoom = () => setCurrentZoom(m.getZoom());
+    m.on('zoom', updateZoom);
+    m.on('moveend', updateZoom);
 
     m.on('load', () => {
+      updateZoom();
       // 0. Satelīta aerofoto pamatne (Esri World Imagery)
       m.addSource('esri-satellite', {
         type: 'raster',
@@ -719,6 +721,7 @@ export default function App() {
                     <div className={`lc-row ${showParcels ? 'on' : ''}`} onClick={() => setShowParcels(!showParcels)}>
                       <div className="lc-swatch" style={{ background: '#1b6b3a' }} />
                       <span className="lc-row-name">Zemes vienības (robežas)</span>
+                      {currentZoom < 8 && <span className="lc-row-hint">pietuviniet</span>}
                       <button className={`lc-tog ${showParcels ? 'on' : ''}`} type="button" tabIndex={-1}>
                         <div className="lc-tog-k" />
                       </button>
@@ -726,6 +729,7 @@ export default function App() {
                     <div className={`lc-row ${showBuildings ? 'on' : ''}`} onClick={() => setShowBuildings(!showBuildings)}>
                       <div className="lc-swatch" style={{ background: '#334155' }} />
                       <span className="lc-row-name">Ēkas un būves</span>
+                      {currentZoom < 10 && <span className="lc-row-hint">pietuviniet</span>}
                       <button className={`lc-tog ${showBuildings ? 'on' : ''}`} type="button" tabIndex={-1}>
                         <div className="lc-tog-k" />
                       </button>
@@ -1002,9 +1006,13 @@ export default function App() {
       )}
 
       {/* Tālummaiņas paziņojums, kad attālināts ārpus detalizētajiem datiem */}
-      {currentZoom < 9 && (
-        <div id="zoom-hint-toast">
-          🔍 Pietuviniet karti, lai skatītu precīzas zemes vienību robežas un ēkas
+      {currentZoom < 10 && (
+        <div
+          id="zoom-hint-toast"
+          onClick={() => map.current?.zoomIn()}
+          title="Noklikšķiniet, lai pietuvinātu karti"
+        >
+          🔍 Pietuviniet karti tuvāk, lai skatītu zemes vienību robežas un ēkas
         </div>
       )}
     </>
