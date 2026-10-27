@@ -385,16 +385,16 @@ def import_energy_certificates(limit: int = 0):
         with conn.cursor() as cur:
             cur.execute("""
                 CREATE UNLOGGED TABLE IF NOT EXISTS staging_energy_certs (
-                    doc_number varchar(100),
-                    doc_type varchar(100),
-                    status varchar(50),
+                    doc_number text,
+                    doc_type text,
+                    status text,
                     issue_date date,
                     valid_until date,
                     cadastre_codes text,
                     building_code varchar(14),
                     parcel_code varchar(11),
                     address text,
-                    energy_class varchar(10),
+                    energy_class text,
                     heating_kwh_m2 numeric(10, 2),
                     area_m2 numeric(16, 2)
                 );
