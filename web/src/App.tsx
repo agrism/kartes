@@ -152,11 +152,11 @@ export default function App() {
         layout: { visibility: 'none' },
       });
 
-      // 1. ZEMES VIENĪBAS (Parcels)
+      // 1. ZEMES VIENĪBAS (Parcels) - detalizētās robežas no z12.5 (kā kadastrakarte.lv)
       m.addSource('parcels', {
         type: 'vector',
         tiles: [`${TILES_BASE}/parcels/{z}/{x}/{y}`],
-        minzoom: 8,
+        minzoom: 12,
         maxzoom: 22,
       });
 
@@ -165,13 +165,12 @@ export default function App() {
         type: 'fill',
         source: 'parcels',
         'source-layer': 'parcels',
-        minzoom: 8,
+        minzoom: 12.5,
         paint: {
           'fill-color': '#1b6b3a',
           'fill-opacity': [
             'interpolate', ['linear'], ['zoom'],
-            8, 0.02,
-            12, 0.06,
+            12.5, 0.05,
             15, 0.12,
           ],
         },
@@ -182,30 +181,28 @@ export default function App() {
         type: 'line',
         source: 'parcels',
         'source-layer': 'parcels',
-        minzoom: 8,
+        minzoom: 12.5,
         paint: {
           'line-color': '#1b6b3a',
           'line-width': [
             'interpolate', ['linear'], ['zoom'],
-            8, 0.25,
-            11, 0.5,
+            12.5, 0.5,
             14, 1.2,
             17, 2.0,
           ],
           'line-opacity': [
             'interpolate', ['linear'], ['zoom'],
-            8, 0.35,
-            12, 0.65,
+            12.5, 0.65,
             15, 0.85,
           ],
         },
       });
 
-      // 2. ĒKAS (Buildings)
+      // 2. ĒKAS (Buildings) - detalizētie ēku korpusi no z13 (kā kadastrakarte.lv)
       m.addSource('buildings', {
         type: 'vector',
         tiles: [`${TILES_BASE}/buildings/{z}/{x}/{y}`],
-        minzoom: 10,
+        minzoom: 13,
         maxzoom: 22,
       });
 
@@ -214,13 +211,12 @@ export default function App() {
         type: 'fill',
         source: 'buildings',
         'source-layer': 'buildings',
-        minzoom: 10,
+        minzoom: 13,
         paint: {
           'fill-color': '#475569',
           'fill-opacity': [
             'interpolate', ['linear'], ['zoom'],
-            10, 0.25,
-            12, 0.5,
+            13, 0.4,
             15, 0.7,
           ],
         },
@@ -231,13 +227,12 @@ export default function App() {
         type: 'line',
         source: 'buildings',
         'source-layer': 'buildings',
-        minzoom: 10,
+        minzoom: 13,
         paint: {
           'line-color': '#1e293b',
           'line-width': [
             'interpolate', ['linear'], ['zoom'],
-            10, 0.3,
-            13, 0.7,
+            13, 0.6,
             16, 1.2,
           ],
           'line-opacity': 0.9,
@@ -721,7 +716,7 @@ export default function App() {
                     <div className={`lc-row ${showParcels ? 'on' : ''}`} onClick={() => setShowParcels(!showParcels)}>
                       <div className="lc-swatch" style={{ background: '#1b6b3a' }} />
                       <span className="lc-row-name">Zemes vienības (robežas)</span>
-                      {currentZoom < 8 && <span className="lc-row-hint">pietuviniet</span>}
+                      {currentZoom < 12.5 && <span className="lc-row-hint">pietuviniet</span>}
                       <button className={`lc-tog ${showParcels ? 'on' : ''}`} type="button" tabIndex={-1}>
                         <div className="lc-tog-k" />
                       </button>
@@ -729,7 +724,7 @@ export default function App() {
                     <div className={`lc-row ${showBuildings ? 'on' : ''}`} onClick={() => setShowBuildings(!showBuildings)}>
                       <div className="lc-swatch" style={{ background: '#334155' }} />
                       <span className="lc-row-name">Ēkas un būves</span>
-                      {currentZoom < 10 && <span className="lc-row-hint">pietuviniet</span>}
+                      {currentZoom < 13 && <span className="lc-row-hint">pietuviniet</span>}
                       <button className={`lc-tog ${showBuildings ? 'on' : ''}`} type="button" tabIndex={-1}>
                         <div className="lc-tog-k" />
                       </button>
@@ -1006,7 +1001,7 @@ export default function App() {
       )}
 
       {/* Tālummaiņas paziņojums, kad attālināts ārpus detalizētajiem datiem */}
-      {currentZoom < 10 && (
+      {currentZoom < 12.5 && (
         <div
           id="zoom-hint-toast"
           onClick={() => map.current?.zoomIn()}
