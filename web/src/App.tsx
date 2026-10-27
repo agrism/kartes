@@ -424,52 +424,57 @@ export default function App() {
         }
       });
 
-      // Ielādējam punktus (darījumus un sludinājumus)
-      Promise.all([
-        fetch('/data/listings-pts.json').then((r) => r.json()).catch(() => []),
-        fetch('/data/tx-pts.json').then((r) => r.json()).catch(() => []),
-      ]).then(([listingsData, txData]) => {
-        const feats: any[] = [];
-        const lFeats: any[] = [];
-        if (Array.isArray(listingsData)) {
+      // 1. Ātrā sludinājumu ielāde (tūlītēja klasteru parādīšanās pie jebkura mēroga)
+      let allFeats: any[] = [];
+      fetch('/data/listings-pts.json')
+        .then((r) => r.json())
+        .then((listingsData) => {
+          if (!Array.isArray(listingsData)) return;
+          const lFeats: any[] = [];
           for (const item of listingsData) {
             const f = {
               type: 'Feature',
               geometry: { type: 'Point', coordinates: [item[0], item[1]] },
               properties: { l: 1, t: 0, portal: item[2], type: item[3] },
             };
-            feats.push(f);
             lFeats.push(f);
           }
+          allFeats = [...lFeats];
           const lSrc = m.getSource('listings-pts') as maplibregl.GeoJSONSource | undefined;
           if (lSrc) lSrc.setData({ type: 'FeatureCollection', features: lFeats });
-        }
-        if (Array.isArray(txData) && txData.length >= 3) {
+
+          const src = m.getSource('mix-pts') as maplibregl.GeoJSONSource | undefined;
+          if (src) {
+            src.setData({ type: 'FeatureCollection', features: allFeats });
+          }
+        })
+        .catch(() => {});
+
+      // 2. Fona darījumu punktu ielāde (apvieno ar sludinājumu klasteriem)
+      fetch('/data/tx-pts.json')
+        .then((r) => r.json())
+        .then((txData) => {
+          if (!Array.isArray(txData) || txData.length < 3) return;
+          const txFeats: any[] = [];
           const n = Math.floor(txData.length / 3);
           let x = 0;
           let y = 0;
           for (let i = 0; i < n; i++) {
             x += txData[3 * i];
             y += txData[3 * i + 1];
-            feats.push({
+            txFeats.push({
               type: 'Feature',
               geometry: { type: 'Point', coordinates: [x / 1e4, y / 1e4] },
               properties: { l: 0, t: 1 },
             });
           }
-        }
-
-        const src = m.getSource('mix-pts') as maplibregl.GeoJSONSource | undefined;
-        if (src) {
-          src.setData({
-            type: 'FeatureCollection',
-            features: feats,
-          });
-          setTimeout(updateMixMarkers, 50);
-          setTimeout(updateMixMarkers, 300);
-          setTimeout(updateMixMarkers, 800);
-        }
-      }).catch((e) => console.error('Error loading points:', e));
+          allFeats = allFeats.concat(txFeats);
+          const src = m.getSource('mix-pts') as maplibregl.GeoJSONSource | undefined;
+          if (src) {
+            src.setData({ type: 'FeatureCollection', features: allFeats });
+          }
+        })
+        .catch(() => {});
 
       // 1. ZEMES VIENĪBAS (Parcels) - robežas no z11.5
       m.addSource('parcels', {
