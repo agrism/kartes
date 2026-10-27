@@ -73,6 +73,49 @@ export default function App() {
   const [showPollution, setShowPollution] = useState(true);
   const [isSatellite, setIsSatellite] = useState(false);
 
+  // Slāņu panelis (atvērts/aizvērts) - desktopā pēc noklusējuma atvērts, mobilajā aizvērts
+  const [isLayersOpen, setIsLayersOpen] = useState(
+    typeof window !== 'undefined' ? window.innerWidth > 820 : true
+  );
+
+  const activeLayersCount =
+    (showParcels ? 1 : 0) +
+    (showBuildings ? 1 : 0) +
+    (showTransactions ? 1 : 0) +
+    (showEnergy ? 1 : 0) +
+    (showPollution ? 1 : 0) +
+    (showFloods ? 1 : 0) +
+    (isSatellite ? 1 : 0);
+
+  const clearAllLayers = () => {
+    setShowParcels(false);
+    setShowBuildings(false);
+    setShowTransactions(false);
+    setShowEnergy(false);
+    setShowPollution(false);
+    setShowFloods(false);
+    setIsSatellite(false);
+  };
+
+  const handleLocate = () => {
+    if ('geolocation' in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          map.current?.flyTo({
+            center: [pos.coords.longitude, pos.coords.latitude],
+            zoom: 17,
+            essential: true,
+          });
+        },
+        (err) => {
+          console.warn('Geolocation error:', err);
+          alert('Nevarēja noteikt atrašanās vietu. Pārbaudiet pārlūka GPS piekļuves atļaujas.');
+        },
+        { enableHighAccuracy: true }
+      );
+    }
+  };
+
   // Inicializē MapLibre karti
   useEffect(() => {
     if (!mapContainer.current || map.current) return;
@@ -82,14 +125,8 @@ export default function App() {
       style: 'https://tiles.openfreemap.org/styles/positron',
       center: [24.1048, 56.9495], // Vecrīga / Centrs
       zoom: 16,
+      attributionControl: false,
     });
-
-    const geolocate = new maplibregl.GeolocateControl({
-      positionOptions: { enableHighAccuracy: true },
-      trackUserLocation: true,
-    });
-    m.addControl(geolocate, 'bottom-right');
-    m.addControl(new maplibregl.NavigationControl({ showCompass: true }), 'bottom-right');
 
     m.on('load', () => {
       // 0. Satelīta aerofoto pamatne (Esri World Imagery)
@@ -454,98 +491,289 @@ export default function App() {
 
   return (
     <>
-      <div id="map" ref={mapContainer} />
+      {/* 1. TOP NAVBAR (Kā oriģinālajā kadastrakarte.lv) */}
+      <header id="navbar">
+        <div className="nav-inner">
+          <a href="/" className="nav-logo">
+            <div className="nav-logo-icon">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#7a1f16" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/>
+                <circle cx="12" cy="9" r="2.5" fill="#7a1f16"/>
+              </svg>
+            </div>
+            <span className="nav-logo-text">Kadastra Karte</span>
+          </a>
 
-      {/* Galvenā augšējā josla ar meklēšanu un slāņu kontroli */}
-      <div className="top-bar">
-        <div className="search-container">
-          <span className="search-icon">🔍</span>
-          <input
-            ref={searchInputRef}
-            type="text"
-            className="search-input"
-            placeholder="Meklēt adresi (piem. Brīvības 38, Doma laukums)..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
-          {searchQuery && (
+          <nav className="nav-links">
+            <a href="/" className="active">Īpašumu karte</a>
+            <a href="#darijumi">Darījumu statistika</a>
+            <a href="#par">Par projektu</a>
+          </nav>
+
+          <div className="nav-actions">
             <button
               type="button"
-              className="search-clear-btn"
-              onClick={() => {
-                setSearchQuery('');
-                setSuggestions([]);
-              }}
-              aria-label="Notīrīt meklēšanu"
+              className={`nav-btn outline ${isSatellite ? 'active-sat' : ''}`}
+              onClick={() => setIsSatellite(!isSatellite)}
             >
-              ✕
+              🛰️ {isSatellite ? 'Pamatkarte' : 'Aerofoto'}
             </button>
-          )}
+            <div className="nav-lang">
+              <button type="button" className="nav-lang-btn active">LV</button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      {/* 2. MAP CONTAINER */}
+      <div id="map" ref={mapContainer} />
+
+      {/* 3. MOBILE OVERLAY */}
+      <div
+        id="mob-layers-overlay"
+        className={isLayersOpen ? 'open' : ''}
+        onClick={() => setIsLayersOpen(false)}
+      />
+
+      {/* 4. KREISĀ SLEJA: MEKLĒTĀJS UN SLĀŅU KARTIŅA (#map-left-col) */}
+      <div id="map-left-col">
+        <div id="search-wrap">
+          <div id="search-box">
+            <span id="search-icon">🔍</span>
+            <input
+              ref={searchInputRef}
+              id="search-input"
+              type="text"
+              placeholder="Meklēt adresi, pilsētu, novadu..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              autoComplete="off"
+              spellCheck="false"
+            />
+            {searchQuery && (
+              <span
+                id="search-clear"
+                onClick={() => {
+                  setSearchQuery('');
+                  setSuggestions([]);
+                }}
+              >
+                ✕
+              </span>
+            )}
+          </div>
 
           {suggestions.length > 0 && (
-            <div className="suggestions-dropdown">
+            <div id="search-results">
               {suggestions.map((s, idx) => (
                 <div
                   key={`${s.code}-${idx}`}
-                  className="suggestion-item"
+                  className="search-item"
                   onClick={() => handleSelectSuggestion(s)}
                 >
-                  <span className="suggestion-title">{s.address}</span>
-                  <span className="suggestion-code">{s.code}</span>
+                  <div className="search-item-main">{s.address}</div>
+                  <div className="search-item-sub mono">{s.code}</div>
                 </div>
               ))}
             </div>
           )}
-        </div>
 
-        {/* Slāņu ieslēgšanas/izslēgšanas poga ar horizontālu ritināšanu telefonā */}
-        <div className="layer-pills-container">
-          <div className="layer-pills">
-            <button
-              className={`layer-pill ${isSatellite ? 'active-dark' : ''}`}
-              onClick={() => setIsSatellite(!isSatellite)}
-            >
-              {isSatellite ? '🗺️ Karte' : '🛰️ Satelīts'}
-            </button>
-            <button
-              className={`layer-pill ${showParcels ? 'active-green' : ''}`}
-              onClick={() => setShowParcels(!showParcels)}
-            >
-              🗺️ Zemes gabali
-            </button>
-            <button
-              className={`layer-pill ${showBuildings ? 'active-slate' : ''}`}
-              onClick={() => setShowBuildings(!showBuildings)}
-            >
-              🏢 Ēkas
-            </button>
-            <button
-              className={`layer-pill ${showTransactions ? 'active-blue' : ''}`}
-              onClick={() => setShowTransactions(!showTransactions)}
-            >
-              💶 Darījumi
-            </button>
-            <button
-              className={`layer-pill ${showEnergy ? 'active-amber' : ''}`}
-              onClick={() => setShowEnergy(!showEnergy)}
-              title="BVKB ēku energoefektivitātes klases (A+ līdz G)"
-            >
-              ⚡ Enerģija
-            </button>
-            <button
-              className={`layer-pill ${showPollution ? 'active-red' : ''}`}
-              onClick={() => setShowPollution(!showPollution)}
-              title="VVD reģistrētās piesārņotās un potenciāli piesārņotās vietas"
-            >
-              ⚠️ Piesārņojums
-            </button>
+          {/* Mobilā slāņu atvēršanas poga */}
+          <div
+            id="mob-layers-trigger"
+            onClick={() => setIsLayersOpen(!isLayersOpen)}
+            role="button"
+            aria-label="Slāņi"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#3a352e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+            </svg>
+            <span id="mob-layers-label">Slāņi</span>
+            {activeLayersCount > 0 && (
+              <span id="mob-layers-badge">{activeLayersCount}</span>
+            )}
           </div>
         </div>
 
-        {/* Statistika */}
-        <div className="stat-badge">
-          <span>🇱🇻 VZD + BVKB + VVD</span>
+        {/* ORIĢINĀLĀ SLĀŅU KARTIŅA (#layer-card) */}
+        <div id="layer-card" className={isLayersOpen ? 'mob-open' : ''}>
+          {!isLayersOpen ? (
+            /* SAKĻAUTĀ KARTIŅA */
+            <div id="lc-collapsed" onClick={() => setIsLayersOpen(true)}>
+              <div className={activeLayersCount > 0 ? "lc-badge-active" : "lc-badge-empty"}>
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={activeLayersCount > 0 ? "#fff" : "#6E6458"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                </svg>
+              </div>
+              <div id="lc-info">
+                <div id="lc-title">Slāņi</div>
+                <div id="lc-sub">{activeLayersCount} aktīvi slāņi</div>
+              </div>
+              <div id="lc-chevron-r">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8A7F72" strokeWidth="2.5">
+                  <polyline points="9 18 15 12 9 6" />
+                </svg>
+              </div>
+            </div>
+          ) : (
+            /* IZVĒRSTĀ KARTIŅA */
+            <div id="lc-expanded">
+              <div id="lc-exp-header">
+                <div className={activeLayersCount > 0 ? "lc-badge-active" : "lc-badge-empty"} style={{ width: 38, height: 38, borderRadius: 12 }}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={activeLayersCount > 0 ? "#fff" : "#6E6458"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                  </svg>
+                </div>
+                <div id="lc-exp-text">
+                  <div id="lc-exp-title">Slāņi</div>
+                  <div id="lc-exp-status">{activeLayersCount} aktīvi slāņi</div>
+                </div>
+                {activeLayersCount > 0 && (
+                  <button id="lc-clear-btn" type="button" onClick={clearAllLayers}>
+                    Notīrīt
+                  </button>
+                )}
+                <button id="lc-collapse-btn" type="button" onClick={() => setIsLayersOpen(false)} title="Sakļaut slāņus">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6E6458" strokeWidth="2">
+                    <polyline points="18 15 12 9 6 15" />
+                  </svg>
+                </button>
+                <button id="lc-mob-close" type="button" onClick={() => setIsLayersOpen(false)}>✕</button>
+              </div>
+
+              {/* Slāņu kategorijas */}
+              <div id="lc-cats">
+                {/* 1. KADASTRS UN ĒKAS */}
+                <div className="lc-cat open">
+                  <div className="lc-cat-hdr">
+                    <div className="lc-tile" style={{ background: '#eaf4ee', color: '#1b6b3a' }}>🏛️</div>
+                    <span style={{ fontWeight: 700, fontSize: 13, flex: 1 }}>Kadastrs un ēkas</span>
+                  </div>
+                  <div className="lc-layers">
+                    <div className={`lc-row ${showParcels ? 'on' : ''}`} onClick={() => setShowParcels(!showParcels)}>
+                      <div className="lc-swatch" style={{ background: '#1b6b3a' }} />
+                      <span className="lc-row-name">Zemes vienības (robežas)</span>
+                      <button className={`lc-tog ${showParcels ? 'on' : ''}`} type="button" tabIndex={-1}>
+                        <div className="lc-tog-k" />
+                      </button>
+                    </div>
+                    <div className={`lc-row ${showBuildings ? 'on' : ''}`} onClick={() => setShowBuildings(!showBuildings)}>
+                      <div className="lc-swatch" style={{ background: '#334155' }} />
+                      <span className="lc-row-name">Ēkas un būves</span>
+                      <button className={`lc-tog ${showBuildings ? 'on' : ''}`} type="button" tabIndex={-1}>
+                        <div className="lc-tog-k" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. NEKUSTAMĀ ĪPAŠUMA DARĪJUMI */}
+                <div className="lc-cat open" style={{ marginTop: 8 }}>
+                  <div className="lc-cat-hdr">
+                    <div className="lc-tile" style={{ background: '#e0f2fe', color: '#0284c7' }}>💶</div>
+                    <span style={{ fontWeight: 700, fontSize: 13, flex: 1 }}>Darījumi (VZD)</span>
+                  </div>
+                  <div className="lc-layers">
+                    <div className={`lc-row ${showTransactions ? 'on' : ''}`} onClick={() => setShowTransactions(!showTransactions)}>
+                      <div className="lc-swatch" style={{ background: '#0284c7' }} />
+                      <span className="lc-row-name">Cenas un darījumu vēsture</span>
+                      <button className={`lc-tog ${showTransactions ? 'on' : ''}`} type="button" tabIndex={-1}>
+                        <div className="lc-tog-k" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3. ENERGOEFEKTIVITĀTE */}
+                <div className="lc-cat open" style={{ marginTop: 8 }}>
+                  <div className="lc-cat-hdr">
+                    <div className="lc-tile" style={{ background: '#fef3c7', color: '#d97706' }}>⚡</div>
+                    <span style={{ fontWeight: 700, fontSize: 13, flex: 1 }}>Energoefektivitāte (BVKB)</span>
+                  </div>
+                  <div className="lc-layers">
+                    <div className={`lc-row ${showEnergy ? 'on' : ''}`} onClick={() => setShowEnergy(!showEnergy)}>
+                      <div className="lc-swatch" style={{ background: '#d97706' }} />
+                      <span className="lc-row-name">Ēku energosertifikāti (A+ līdz G)</span>
+                      <button className={`lc-tog ${showEnergy ? 'on' : ''}`} type="button" tabIndex={-1}>
+                        <div className="lc-tog-k" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 4. VIDES RISKI UN PIESĀRŅOJUMS */}
+                <div className="lc-cat open" style={{ marginTop: 8 }}>
+                  <div className="lc-cat-hdr">
+                    <div className="lc-tile" style={{ background: '#fee2e2', color: '#dc2626' }}>⚠️</div>
+                    <span style={{ fontWeight: 700, fontSize: 13, flex: 1 }}>Vides riski & Piesārņojums</span>
+                  </div>
+                  <div className="lc-layers">
+                    <div className={`lc-row ${showPollution ? 'on' : ''}`} onClick={() => setShowPollution(!showPollution)}>
+                      <div className="lc-swatch" style={{ background: '#dc2626' }} />
+                      <span className="lc-row-name">VVD Piesārņotās vietas</span>
+                      <button className={`lc-tog ${showPollution ? 'on' : ''}`} type="button" tabIndex={-1}>
+                        <div className="lc-tog-k" />
+                      </button>
+                    </div>
+                    <div className={`lc-row ${showFloods ? 'on' : ''}`} onClick={() => setShowFloods(!showFloods)}>
+                      <div className="lc-swatch" style={{ background: '#0284c7' }} />
+                      <span className="lc-row-name">LVĢMC Plūdu riska zonas</span>
+                      <button className={`lc-tog ${showFloods ? 'on' : ''}`} type="button" tabIndex={-1}>
+                        <div className="lc-tog-k" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 5. PAMATNE */}
+                <div className="lc-cat open" style={{ marginTop: 8 }}>
+                  <div className="lc-cat-hdr">
+                    <div className="lc-tile" style={{ background: '#f1f5f9', color: '#0f172a' }}>🛰️</div>
+                    <span style={{ fontWeight: 700, fontSize: 13, flex: 1 }}>Pamatkartes</span>
+                  </div>
+                  <div className="lc-layers">
+                    <div className={`lc-row ${isSatellite ? 'on' : ''}`} onClick={() => setIsSatellite(!isSatellite)}>
+                      <div className="lc-swatch" style={{ background: '#0f172a' }} />
+                      <span className="lc-row-name">Satelīta aerofoto (Esri)</span>
+                      <button className={`lc-tog ${isSatellite ? 'on' : ''}`} type="button" tabIndex={-1}>
+                        <div className="lc-tog-k" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
+      </div>
+
+      {/* 5. LABĀS PUSES KARTES POGAS (#sat-btn un #zoom-ctl) */}
+      <div
+        id="sat-btn"
+        className={isSatellite ? 'sat-active' : 'sat-off'}
+        onClick={() => setIsSatellite(!isSatellite)}
+        title="Pārslēgt aerofoto"
+      >
+        <div id="sat-btn-label">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <polygon points="12 2 2 7 12 12 22 7 12 2"/>
+            <polyline points="2 17 12 22 22 17"/>
+            <polyline points="2 12 12 17 22 12"/>
+          </svg>
+          <span id="sat-btn-text">{isSatellite ? 'Pamatkarte' : 'Aerofoto'}</span>
+        </div>
+      </div>
+
+      <div id="zoom-ctl" role="group" aria-label="Kartes mērogs">
+        <button type="button" id="zoom-in" title="Pietuvināt" onClick={() => map.current?.zoomIn()}>+</button>
+        <button type="button" id="zoom-out" title="Attālināt" onClick={() => map.current?.zoomOut()}>−</button>
+        <button type="button" id="loc-btn" title="Rādīt, kur es atrodos" onClick={handleLocate}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1a1209" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="3.4"/>
+            <circle cx="12" cy="12" r="7.6"/>
+            <path d="M12 1.6v3M12 19.4v3M1.6 12h3M19.4 12h3"/>
+          </svg>
+        </button>
       </div>
 
       {/* Sānjoslas / Mobilā paneļa info panelis */}
