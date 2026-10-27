@@ -60,7 +60,26 @@ services:
     ports:
       - "${CACHE_PORT:-6379}:6379"
 
-  # 5. pgAdmin: Izvēles Web GUI ģeotelpisko datu, tabulu un vaicājumu apskatei
+  # 5. Frontend UI: React + Vite + MapLibre GL JS (HMR caur Docker sējumu)
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    container_name: kartes-web
+    restart: unless-stopped
+    ports:
+      - "${WEB_PORT:-5173}:5173"
+    volumes:
+      - ./web:/app
+      - /app/node_modules
+    environment:
+      - VITE_API_URL=http://localhost:8080
+      - VITE_TILES_URL=http://localhost:3000
+    depends_on:
+      - api
+      - martin
+
+  # 6. pgAdmin: Izvēles Web GUI ģeotelpisko datu, tabulu un vaicājumu apskatei
   # Lai palaistu kopā ar pgAdmin: docker compose --profile tools up -d
   pgadmin:
     image: dpage/pgadmin4:latest
