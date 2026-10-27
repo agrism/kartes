@@ -100,3 +100,41 @@ VALUES (
     'Doma laukums 1, Rīga',
     ST_Transform(ST_SetSRID(ST_MakePoint(24.1048, 56.9495), 4326), 3857)
 ) ON CONFLICT (deal_id) DO NOTHING;
+
+-- 8. Ēku energosertifikāti (BVKB / BIS)
+CREATE TABLE IF NOT EXISTS public.energy_certificates (
+    id BIGSERIAL PRIMARY KEY,
+    doc_number VARCHAR(100) UNIQUE,
+    doc_type VARCHAR(100),
+    status VARCHAR(50),
+    issue_date DATE,
+    valid_until DATE,
+    cadastre_codes TEXT,
+    building_code VARCHAR(14),
+    parcel_code VARCHAR(11),
+    address TEXT,
+    energy_class VARCHAR(10),
+    heating_kwh_m2 NUMERIC(8, 2),
+    area_m2 NUMERIC(10, 2),
+    geom GEOMETRY(Point, 3857)
+);
+
+CREATE INDEX IF NOT EXISTS idx_energy_cert_geom ON public.energy_certificates USING GIST (geom);
+CREATE INDEX IF NOT EXISTS idx_energy_cert_bcode ON public.energy_certificates (building_code);
+CREATE INDEX IF NOT EXISTS idx_energy_cert_pcode ON public.energy_certificates (parcel_code);
+CREATE INDEX IF NOT EXISTS idx_energy_cert_class ON public.energy_certificates (energy_class);
+
+-- 9. Piesārņotās un potenciāli piesārņotās vietas (VVD / LVĢMC)
+CREATE TABLE IF NOT EXISTS public.pollution_sites (
+    id BIGSERIAL PRIMARY KEY,
+    reg_number VARCHAR(50),
+    name TEXT,
+    place TEXT,
+    address TEXT,
+    category VARCHAR(50), -- 'Piesārņota vieta', 'Potenciāli piesārņota vieta'
+    site_type TEXT,
+    geom GEOMETRY(Point, 3857)
+);
+
+CREATE INDEX IF NOT EXISTS idx_pollution_geom ON public.pollution_sites USING GIST (geom);
+CREATE INDEX IF NOT EXISTS idx_pollution_category ON public.pollution_sites (category);
