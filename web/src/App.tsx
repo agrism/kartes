@@ -49,11 +49,12 @@ function getEndpoints() {
   return {
     apiBase: (import.meta as any).env.VITE_API_URL || (isLocal ? 'http://localhost:8090' : origin),
     tilesBase: (import.meta as any).env.VITE_TILES_URL || (isLocal ? 'http://localhost:3000' : `${origin}/tiles`),
+    dataBase: origin,
   };
 }
 
 export default function App() {
-  const { apiBase: API_BASE, tilesBase: TILES_BASE } = getEndpoints();
+  const { apiBase: API_BASE, tilesBase: TILES_BASE, dataBase: DATA_BASE } = getEndpoints();
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<maplibregl.Map | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -64,14 +65,23 @@ export default function App() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // Slāņu redzamība (kadastrakarte.lv pēc noklusējuma: 4 no 38 aktīvi)
+  // Slāņu redzamība
   const [showParcels, setShowParcels] = useState(true);
   const [showBuildings, setShowBuildings] = useState(true);
   const [showTransactions, setShowTransactions] = useState(true);
   const [showListings, setShowListings] = useState(true);
+  const [showZoning, setShowZoning] = useState(false);
+  const [showConstruction, setShowConstruction] = useState(false);
+  const [showForests, setShowForests] = useState(false);
+  const [showServituti, setShowServituti] = useState(false);
+  const [showProtected, setShowProtected] = useState(false);
+  const [showNature, setShowNature] = useState(false);
   const [showFloods, setShowFloods] = useState(false);
   const [showEnergy, setShowEnergy] = useState(false);
   const [showPollution, setShowPollution] = useState(false);
+  const [showDegrading, setShowDegrading] = useState(false);
+  const [showSchools, setShowSchools] = useState(false);
+  const [showTransports, setShowTransports] = useState(false);
   const [isSatellite, setIsSatellite] = useState(false);
 
   // Slāņu panelis (atvērts/aizvērts) - pēc noklusējuma sakļauts kā kadastrakarte.lv
@@ -82,14 +92,24 @@ export default function App() {
   showListingsRef.current = showListings;
   const updateMixMarkersRef = useRef<() => void>(() => {});
 
+  const totalLayersCount = 17;
   const activeLayersCount =
     (showParcels ? 1 : 0) +
     (showBuildings ? 1 : 0) +
     (showTransactions ? 1 : 0) +
     (showListings ? 1 : 0) +
+    (showZoning ? 1 : 0) +
+    (showConstruction ? 1 : 0) +
+    (showForests ? 1 : 0) +
+    (showServituti ? 1 : 0) +
+    (showProtected ? 1 : 0) +
+    (showNature ? 1 : 0) +
+    (showFloods ? 1 : 0) +
     (showEnergy ? 1 : 0) +
     (showPollution ? 1 : 0) +
-    (showFloods ? 1 : 0) +
+    (showDegrading ? 1 : 0) +
+    (showSchools ? 1 : 0) +
+    (showTransports ? 1 : 0) +
     (isSatellite ? 1 : 0);
 
   const clearAllLayers = () => {
@@ -97,9 +117,18 @@ export default function App() {
     setShowBuildings(false);
     setShowTransactions(false);
     setShowListings(false);
+    setShowZoning(false);
+    setShowConstruction(false);
+    setShowForests(false);
+    setShowServituti(false);
+    setShowProtected(false);
+    setShowNature(false);
+    setShowFloods(false);
     setShowEnergy(false);
     setShowPollution(false);
-    setShowFloods(false);
+    setShowDegrading(false);
+    setShowSchools(false);
+    setShowTransports(false);
     setIsSatellite(false);
   };
 
@@ -623,6 +652,319 @@ export default function App() {
         },
       });
 
+      // 6. TAPIS ZONĒJUMS
+      m.addSource('tapis-zone', {
+        type: 'vector',
+        tiles: [`${TILES_BASE}/tapis_zonejums/{z}/{x}/{y}`],
+        minzoom: 6,
+        maxzoom: 22,
+      });
+      const zoneColorExpr: any = [
+        'case',
+        ['==', ['slice', ['coalesce', ['get', 'indekss'], ''], 0, 3], 'DzS'], '#e8a888',
+        ['==', ['slice', ['coalesce', ['get', 'indekss'], ''], 0, 3], 'DzM'], '#f5c870',
+        ['==', ['slice', ['coalesce', ['get', 'indekss'], ''], 0, 3], 'DzD'], '#f5dca0',
+        ['==', ['slice', ['coalesce', ['get', 'indekss'], ''], 0, 2], 'Dz'], '#f0c890',
+        ['==', ['slice', ['coalesce', ['get', 'indekss'], ''], 0, 2], 'JC'], '#f0c060',
+        ['==', ['slice', ['coalesce', ['get', 'indekss'], ''], 0, 2], 'TR'], '#d8d4c0',
+        ['==', ['slice', ['coalesce', ['get', 'indekss'], ''], 0, 2], 'TA'], '#b8c8d8',
+        ['==', ['slice', ['coalesce', ['get', 'indekss'], ''], 0, 2], 'DA'], '#b0d4a8',
+        ['==', ['slice', ['coalesce', ['get', 'indekss'], ''], 0, 2], 'ML'], '#98c898',
+        ['==', ['slice', ['coalesce', ['get', 'indekss'], ''], 0, 2], 'MR'], '#98c898',
+        ['==', ['slice', ['coalesce', ['get', 'indekss'], ''], 0, 1], 'K'], '#f5e040',
+        ['==', ['slice', ['coalesce', ['get', 'indekss'], ''], 0, 1], 'P'], '#c8a0d0',
+        ['==', ['slice', ['coalesce', ['get', 'indekss'], ''], 0, 1], 'R'], '#c0b8d8',
+        ['==', ['slice', ['coalesce', ['get', 'indekss'], ''], 0, 1], 'L'], '#cce090',
+        ['==', ['slice', ['coalesce', ['get', 'indekss'], ''], 0, 1], 'M'], '#98c898',
+        ['==', ['slice', ['coalesce', ['get', 'indekss'], ''], 0, 1], 'Ū'], '#a8c8e8',
+        '#e0d8c8',
+      ];
+      m.addLayer({
+        id: 'tapis-zone-fill',
+        type: 'fill',
+        source: 'tapis-zone',
+        'source-layer': 'tapis_zonejums',
+        minzoom: 6,
+        layout: { visibility: 'none' },
+        paint: {
+          'fill-color': zoneColorExpr,
+          'fill-opacity': 0.45,
+        },
+      });
+      m.addLayer({
+        id: 'tapis-zone-line',
+        type: 'line',
+        source: 'tapis-zone',
+        'source-layer': 'tapis_zonejums',
+        minzoom: 12,
+        layout: { visibility: 'none' },
+        paint: {
+          'line-color': '#7a5030',
+          'line-width': 0.5,
+          'line-opacity': 0.35,
+        },
+      });
+
+      // 7. BŪVNIECĪBAS IECERES (BIS)
+      m.addSource('construction', {
+        type: 'vector',
+        tiles: [`${TILES_BASE}/construction_cases/{z}/{x}/{y}`],
+        minzoom: 8,
+        maxzoom: 22,
+      });
+      m.addLayer({
+        id: 'construction-fill',
+        type: 'fill',
+        source: 'construction',
+        'source-layer': 'construction_cases',
+        minzoom: 8,
+        layout: { visibility: 'none' },
+        paint: {
+          'fill-color': '#f59e0b',
+          'fill-opacity': 0.4,
+        },
+      });
+      m.addLayer({
+        id: 'construction-line',
+        type: 'line',
+        source: 'construction',
+        'source-layer': 'construction_cases',
+        minzoom: 8,
+        layout: { visibility: 'none' },
+        paint: {
+          'line-color': '#d97706',
+          'line-width': 1.2,
+        },
+      });
+
+      // 8. MEŽA NOGABALI (VMD)
+      m.addSource('mezi-med', {
+        type: 'vector',
+        tiles: [`${TILES_BASE}/mv_mezi_med/{z}/{x}/{y}`],
+        minzoom: 9,
+        maxzoom: 13,
+      });
+      m.addLayer({
+        id: 'mezi-med-fill',
+        type: 'fill',
+        source: 'mezi-med',
+        'source-layer': 'mv_mezi_med',
+        minzoom: 9,
+        maxzoom: 13,
+        layout: { visibility: 'none' },
+        paint: {
+          'fill-color': '#2e7d32',
+          'fill-opacity': 0.35,
+        },
+      });
+
+      m.addSource('mezi', {
+        type: 'vector',
+        tiles: [`${TILES_BASE}/mvr_nogabali/{z}/{x}/{y}`],
+        minzoom: 13,
+        maxzoom: 22,
+      });
+      m.addLayer({
+        id: 'mezi-fill',
+        type: 'fill',
+        source: 'mezi',
+        'source-layer': 'mvr_nogabali',
+        minzoom: 13,
+        layout: { visibility: 'none' },
+        paint: {
+          'fill-color': '#2e7d32',
+          'fill-opacity': 0.45,
+        },
+      });
+      m.addLayer({
+        id: 'mezi-line',
+        type: 'line',
+        source: 'mezi',
+        'source-layer': 'mvr_nogabali',
+        minzoom: 13,
+        layout: { visibility: 'none' },
+        paint: {
+          'line-color': '#1b5e20',
+          'line-width': 0.6,
+          'line-opacity': 0.4,
+        },
+      });
+
+      // 9. CEĻU SERVITŪTI
+      m.addSource('servituti', {
+        type: 'vector',
+        tiles: [`${TILES_BASE}/way_restrictions/{z}/{x}/{y}`],
+        minzoom: 10,
+        maxzoom: 22,
+      });
+      m.addLayer({
+        id: 'servituti-line',
+        type: 'line',
+        source: 'servituti',
+        'source-layer': 'way_restrictions',
+        minzoom: 10,
+        layout: { visibility: 'none' },
+        paint: {
+          'line-color': '#ff8f00',
+          'line-width': 2.0,
+          'line-opacity': 0.85,
+        },
+      });
+
+      // 10. DABAS LIEGUMI
+      m.addSource('protected', {
+        type: 'vector',
+        tiles: [`${TILES_BASE}/mv_protected_areas/{z}/{x}/{y}`],
+        minzoom: 6,
+        maxzoom: 22,
+      });
+      m.addLayer({
+        id: 'protected-fill',
+        type: 'fill',
+        source: 'protected',
+        'source-layer': 'mv_protected_areas',
+        minzoom: 6,
+        layout: { visibility: 'none' },
+        paint: {
+          'fill-color': '#15803d',
+          'fill-opacity': 0.25,
+        },
+      });
+      m.addLayer({
+        id: 'protected-line',
+        type: 'line',
+        source: 'protected',
+        'source-layer': 'mv_protected_areas',
+        minzoom: 6,
+        layout: { visibility: 'none' },
+        paint: {
+          'line-color': '#166534',
+          'line-width': 1.0,
+        },
+      });
+
+      // 11. DIŽKOKI UN AKMEŅI
+      m.addSource('nature', {
+        type: 'vector',
+        tiles: [`${TILES_BASE}/mv_nature_monuments/{z}/{x}/{y}`],
+        minzoom: 9,
+        maxzoom: 22,
+      });
+      m.addLayer({
+        id: 'nature-dots',
+        type: 'circle',
+        source: 'nature',
+        'source-layer': 'mv_nature_monuments',
+        minzoom: 9,
+        layout: { visibility: 'none' },
+        paint: {
+          'circle-radius': 4.5,
+          'circle-color': '#15803d',
+          'circle-stroke-width': 1.5,
+          'circle-stroke-color': '#ffffff',
+          'circle-opacity': 0.9,
+        },
+      });
+
+      // 12. PLŪDU RISKA ZONAS
+      m.addSource('flood-spring', {
+        type: 'vector',
+        tiles: [`${TILES_BASE}/flood_zone_spring_100y/{z}/{x}/{y}`],
+        minzoom: 6,
+        maxzoom: 22,
+      });
+      m.addLayer({
+        id: 'flood-spring-fill',
+        type: 'fill',
+        source: 'flood-spring',
+        'source-layer': 'flood_zone_spring_100y',
+        minzoom: 6,
+        layout: { visibility: 'none' },
+        paint: {
+          'fill-color': '#0284c7',
+          'fill-opacity': 0.35,
+        },
+      });
+
+      m.addSource('flood-sea', {
+        type: 'vector',
+        tiles: [`${TILES_BASE}/flood_zone_sea_100y/{z}/{x}/{y}`],
+        minzoom: 6,
+        maxzoom: 22,
+      });
+      m.addLayer({
+        id: 'flood-sea-fill',
+        type: 'fill',
+        source: 'flood-sea',
+        'source-layer': 'flood_zone_sea_100y',
+        minzoom: 6,
+        layout: { visibility: 'none' },
+        paint: {
+          'fill-color': '#0369a1',
+          'fill-opacity': 0.4,
+        },
+      });
+
+      // 13. DEGRADĒTĀS BŪVES
+      m.addSource('degrading', {
+        type: 'vector',
+        tiles: [`${TILES_BASE}/degrading_buildings/{z}/{x}/{y}`],
+        minzoom: 10,
+        maxzoom: 22,
+      });
+      m.addLayer({
+        id: 'degrading-fill',
+        type: 'fill',
+        source: 'degrading',
+        'source-layer': 'degrading_buildings',
+        minzoom: 10,
+        layout: { visibility: 'none' },
+        paint: {
+          'fill-color': '#b91c1c',
+          'fill-opacity': 0.45,
+        },
+      });
+
+      // 14. SKOLAS UN BĒRNUDĀRZI
+      m.addSource('schools', {
+        type: 'geojson',
+        data: `${DATA_BASE}/data/izgl.geojson`,
+      });
+      m.addLayer({
+        id: 'schools-dots',
+        type: 'circle',
+        source: 'schools',
+        minzoom: 8,
+        layout: { visibility: 'none' },
+        paint: {
+          'circle-radius': 4.5,
+          'circle-color': '#2563eb',
+          'circle-stroke-width': 1.5,
+          'circle-stroke-color': '#ffffff',
+          'circle-opacity': 0.9,
+        },
+      });
+
+      // 15. SABIEDRISKAIS TRANSPORTS
+      m.addSource('transports', {
+        type: 'geojson',
+        data: `${DATA_BASE}/data/transports.geojson`,
+      });
+      m.addLayer({
+        id: 'transports-dots',
+        type: 'circle',
+        source: 'transports',
+        minzoom: 9,
+        layout: { visibility: 'none' },
+        paint: {
+          'circle-radius': 3.5,
+          'circle-color': '#0284c7',
+          'circle-stroke-width': 1.0,
+          'circle-stroke-color': '#ffffff',
+          'circle-opacity': 0.85,
+        },
+      });
+
       // Interaktivitāte kursoram
       const interactiveLayers = [
         'parcels-fill',
@@ -633,6 +975,11 @@ export default function App() {
         'listings-dots',
         'energy-dots',
         'pollution-dots',
+        'tapis-zone-fill',
+        'construction-fill',
+        'schools-dots',
+        'nature-dots',
+        'degrading-fill',
       ];
       interactiveLayers.forEach((layer) => {
         m.on('mouseenter', layer, () => {
@@ -750,6 +1097,81 @@ export default function App() {
           `)
           .addTo(m);
       });
+
+      // Klikšķa apstrāde TAPIS zonējumam
+      m.on('click', 'tapis-zone-fill', (e) => {
+        const p = e.features?.[0]?.properties;
+        if (!p) return;
+        new maplibregl.Popup({ offset: 10 })
+          .setLngLat(e.lngLat)
+          .setHTML(`
+            <div style="font-family: inherit; padding: 4px; font-size: 13px;">
+              <div style="font-size: 11px; text-transform: uppercase; color: #64748b; font-weight: 700;">Teritorijas plānojums (TAPIS)</div>
+              <div style="font-weight: 700; color: #1e293b; margin: 4px 0;">${p.nosaukums || p.indekss || 'Funkcionālā zona'}</div>
+              ${p.indekss ? `<div style="font-size: 11px; color: #475569;">Indekss: <strong>${p.indekss}</strong></div>` : ''}
+            </div>
+          `)
+          .addTo(m);
+      });
+
+      // Klikšķa apstrāde skolām
+      m.on('click', 'schools-dots', (e) => {
+        const p = e.features?.[0]?.properties;
+        if (!p) return;
+        new maplibregl.Popup({ offset: 10 })
+          .setLngLat(e.lngLat)
+          .setHTML(`
+            <div style="font-family: inherit; padding: 4px; font-size: 13px;">
+              <div style="font-size: 11px; text-transform: uppercase; color: #2563eb; font-weight: 700;">Izglītības iestāde</div>
+              <div style="font-weight: 700; color: #1e293b; margin: 4px 0;">${p.name || p.nosaukums || 'Skola'}</div>
+              ${p.address ? `<div style="font-size: 11px; color: #64748b;">${p.address}</div>` : ''}
+            </div>
+          `)
+          .addTo(m);
+      });
+
+      // Klikšķa apstrāde būvniecības iecerēm
+      m.on('click', 'construction-fill', (e) => {
+        const p = e.features?.[0]?.properties;
+        if (!p) return;
+        new maplibregl.Popup({ offset: 10 })
+          .setLngLat(e.lngLat)
+          .setHTML(`
+            <div style="font-family: inherit; padding: 4px; font-size: 13px;">
+              <div style="font-size: 11px; text-transform: uppercase; color: #d97706; font-weight: 700;">Būvniecības iecere (BIS)</div>
+              <div style="font-weight: 700; color: #1e293b; margin: 4px 0;">${p.nosaukums || p.name || 'Būvniecības projekts'}</div>
+            </div>
+          `)
+          .addTo(m);
+      });
+
+      // Klikšķa apstrāde dabas pieminekļiem
+      m.on('click', 'nature-dots', (e) => {
+        const p = e.features?.[0]?.properties;
+        if (!p) return;
+        new maplibregl.Popup({ offset: 10 })
+          .setLngLat(e.lngLat)
+          .setHTML(`
+            <div style="font-family: inherit; padding: 4px; font-size: 13px;">
+              <div style="font-size: 11px; text-transform: uppercase; color: #15803d; font-weight: 700;">Dabas piemineklis (DAP)</div>
+              <div style="font-weight: 700; color: #1e293b; margin: 4px 0;">${p.name || p.nosaukums || 'Dižkoks / akmens'}</div>
+            </div>
+          `)
+          .addTo(m);
+      });
+
+      // Klikšķa apstrāde degradētajām ēkām
+      m.on('click', 'degrading-fill', (e) => {
+        new maplibregl.Popup({ offset: 10 })
+          .setLngLat(e.lngLat)
+          .setHTML(`
+            <div style="font-family: inherit; padding: 4px; font-size: 13px;">
+              <div style="font-size: 11px; text-transform: uppercase; color: #b91c1c; font-weight: 700;">Degradēta ēka</div>
+              <div style="font-weight: 700; color: #1e293b; margin: 4px 0;">Vidi degradējoša būve (grausts)</div>
+            </div>
+          `)
+          .addTo(m);
+      });
     });
 
     map.current = m;
@@ -764,38 +1186,70 @@ export default function App() {
   useEffect(() => {
     if (!map.current || !map.current.isStyleLoaded()) return;
     const visibility = (show: boolean) => (show ? 'visible' : 'none');
+    const setLVis = (layerId: string, show: boolean) => {
+      if (map.current?.getLayer(layerId)) {
+        map.current.setLayoutProperty(layerId, 'visibility', visibility(show));
+      }
+    };
 
     if (map.current.getLayer('satellite-layer')) {
       map.current.setLayoutProperty('satellite-layer', 'visibility', isSatellite ? 'visible' : 'none');
     }
-    if (map.current.getLayer('parcels-fill')) {
-      map.current.setLayoutProperty('parcels-fill', 'visibility', visibility(showParcels));
-      map.current.setLayoutProperty('parcels-line', 'visibility', visibility(showParcels));
-    }
-    if (map.current.getLayer('buildings-fill')) {
-      map.current.setLayoutProperty('buildings-fill', 'visibility', visibility(showBuildings));
-      map.current.setLayoutProperty('buildings-line', 'visibility', visibility(showBuildings));
-    }
+    setLVis('parcels-fill', showParcels);
+    setLVis('parcels-line', showParcels);
+    setLVis('buildings-fill', showBuildings);
+    setLVis('buildings-line', showBuildings);
+
     const txVis = visibility(showTransactions);
     ['darijumi-zv-dots', 'darijumi-zvb-dots', 'darijumi-tg-dots'].forEach((id) => {
       if (map.current?.getLayer(id)) {
         map.current.setLayoutProperty(id, 'visibility', txVis);
       }
     });
-    if (map.current?.getLayer('listings-dots')) {
-      map.current.setLayoutProperty('listings-dots', 'visibility', visibility(showListings));
-    }
-    if (map.current?.getLayer('energy-dots')) {
-      map.current.setLayoutProperty('energy-dots', 'visibility', visibility(showEnergy));
-    }
-    if (map.current?.getLayer('pollution-dots')) {
-      map.current.setLayoutProperty('pollution-dots', 'visibility', visibility(showPollution));
-    }
+
+    setLVis('listings-dots', showListings);
+    setLVis('energy-dots', showEnergy);
+    setLVis('pollution-dots', showPollution);
+    setLVis('tapis-zone-fill', showZoning);
+    setLVis('tapis-zone-line', showZoning);
+    setLVis('construction-fill', showConstruction);
+    setLVis('construction-line', showConstruction);
+    setLVis('mezi-med-fill', showForests);
+    setLVis('mezi-fill', showForests);
+    setLVis('mezi-line', showForests);
+    setLVis('servituti-line', showServituti);
+    setLVis('protected-fill', showProtected);
+    setLVis('protected-line', showProtected);
+    setLVis('nature-dots', showNature);
+    setLVis('flood-spring-fill', showFloods);
+    setLVis('flood-sea-fill', showFloods);
+    setLVis('degrading-fill', showDegrading);
+    setLVis('schools-dots', showSchools);
+    setLVis('transports-dots', showTransports);
+
     if (map.current?.getLayer('mix-one')) {
       map.current.setLayoutProperty('mix-one', 'visibility', (showListings || showTransactions) ? 'visible' : 'none');
     }
     updateMixMarkersRef.current();
-  }, [showParcels, showBuildings, showTransactions, showListings, showFloods, showEnergy, showPollution, isSatellite]);
+  }, [
+    showParcels,
+    showBuildings,
+    showTransactions,
+    showListings,
+    showZoning,
+    showConstruction,
+    showForests,
+    showServituti,
+    showProtected,
+    showNature,
+    showFloods,
+    showEnergy,
+    showPollution,
+    showDegrading,
+    showSchools,
+    showTransports,
+    isSatellite,
+  ]);
 
   // Iegūst zemes vienības datus un darījumus no Go API
   const fetchParcelDetails = async (code: string) => {
@@ -996,7 +1450,7 @@ export default function App() {
                 </svg>
               </div>
               <div id="lc-info">
-                <div id="lc-title">{activeLayersCount} no 38 slāņiem aktīvi</div>
+                <div id="lc-title">{activeLayersCount} no {totalLayersCount} slāņiem aktīvi</div>
                 <div id="lc-sub" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                   <span style={{ width: 8, height: 8, borderRadius: 2, background: '#1b6b3a' }} />
                   <span style={{ width: 8, height: 8, borderRadius: 2, background: '#2f8a55' }} />
@@ -1023,7 +1477,7 @@ export default function App() {
                 </div>
                 <div id="lc-exp-text">
                   <div id="lc-exp-title">Slāņi</div>
-                  <div id="lc-exp-status">{activeLayersCount} aktīvi slāņi</div>
+                  <div id="lc-exp-status">{activeLayersCount} no {totalLayersCount} aktīvi</div>
                 </div>
                 {activeLayersCount > 0 && (
                   <button id="lc-clear-btn" type="button" onClick={clearAllLayers}>
@@ -1090,37 +1544,80 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* 3. ENERGOEFEKTIVITĀTE */}
+                {/* 3. PLĀNOJUMS UN BŪVNIECĪBA */}
                 <div className="lc-cat open" style={{ marginTop: 8 }}>
                   <div className="lc-cat-hdr">
-                    <div className="lc-tile" style={{ background: '#fef3c7', color: '#d97706' }}>⚡</div>
-                    <span style={{ fontWeight: 700, fontSize: 13, flex: 1 }}>Energoefektivitāte (BVKB)</span>
+                    <div className="lc-tile" style={{ background: '#ece5f6', color: '#6a45a8' }}>🗺️</div>
+                    <span style={{ fontWeight: 700, fontSize: 13, flex: 1 }}>Plānojums un būvniecība</span>
                   </div>
                   <div className="lc-layers">
-                    <div className={`lc-row ${showEnergy ? 'on' : ''}`} onClick={() => setShowEnergy(!showEnergy)}>
-                      <div className="lc-swatch" style={{ background: '#d97706' }} />
-                      <span className="lc-row-name">Ēku energosertifikāti (A+ līdz G)</span>
-                      <button className={`lc-tog ${showEnergy ? 'on' : ''}`} type="button" tabIndex={-1}>
+                    <div className={`lc-row ${showZoning ? 'on' : ''}`} onClick={() => setShowZoning(!showZoning)}>
+                      <div className="lc-swatch" style={{ background: '#e8a060' }} />
+                      <span className="lc-row-name">TAPIS Teritorijas zonējums</span>
+                      {currentZoom < 6 && <span className="lc-row-hint">pietuviniet</span>}
+                      <button className={`lc-tog ${showZoning ? 'on' : ''}`} type="button" tabIndex={-1}>
+                        <div className="lc-tog-k" />
+                      </button>
+                    </div>
+                    <div className={`lc-row ${showConstruction ? 'on' : ''}`} onClick={() => setShowConstruction(!showConstruction)}>
+                      <div className="lc-swatch" style={{ background: '#f59e0b' }} />
+                      <span className="lc-row-name">Būvniecības ieceres (BIS)</span>
+                      {currentZoom < 8 && <span className="lc-row-hint">pietuviniet</span>}
+                      <button className={`lc-tog ${showConstruction ? 'on' : ''}`} type="button" tabIndex={-1}>
                         <div className="lc-tog-k" />
                       </button>
                     </div>
                   </div>
                 </div>
 
-                {/* 4. VIDES RISKI UN PIESĀRŅOJUMS */}
+                {/* 4. DABA, MEŽS UN IEROBEŽOJUMI */}
+                <div className="lc-cat open" style={{ marginTop: 8 }}>
+                  <div className="lc-cat-hdr">
+                    <div className="lc-tile" style={{ background: '#e1f0e3', color: '#2f7a45' }}>🌲</div>
+                    <span style={{ fontWeight: 700, fontSize: 13, flex: 1 }}>Daba, mežs un ierobežojumi</span>
+                  </div>
+                  <div className="lc-layers">
+                    <div className={`lc-row ${showForests ? 'on' : ''}`} onClick={() => setShowForests(!showForests)}>
+                      <div className="lc-swatch" style={{ background: '#2e7d32' }} />
+                      <span className="lc-row-name">Meža nogabali (VMD)</span>
+                      {currentZoom < 9 && <span className="lc-row-hint">pietuviniet</span>}
+                      <button className={`lc-tog ${showForests ? 'on' : ''}`} type="button" tabIndex={-1}>
+                        <div className="lc-tog-k" />
+                      </button>
+                    </div>
+                    <div className={`lc-row ${showServituti ? 'on' : ''}`} onClick={() => setShowServituti(!showServituti)}>
+                      <div className="lc-swatch" style={{ background: '#ff8f00' }} />
+                      <span className="lc-row-name">Ceļu servitūti</span>
+                      {currentZoom < 10 && <span className="lc-row-hint">pietuviniet</span>}
+                      <button className={`lc-tog ${showServituti ? 'on' : ''}`} type="button" tabIndex={-1}>
+                        <div className="lc-tog-k" />
+                      </button>
+                    </div>
+                    <div className={`lc-row ${showProtected ? 'on' : ''}`} onClick={() => setShowProtected(!showProtected)}>
+                      <div className="lc-swatch" style={{ background: '#15803d' }} />
+                      <span className="lc-row-name">Dabas liegumi un mikroliegumi</span>
+                      <button className={`lc-tog ${showProtected ? 'on' : ''}`} type="button" tabIndex={-1}>
+                        <div className="lc-tog-k" />
+                      </button>
+                    </div>
+                    <div className={`lc-row ${showNature ? 'on' : ''}`} onClick={() => setShowNature(!showNature)}>
+                      <div className="lc-swatch" style={{ background: '#166534' }} />
+                      <span className="lc-row-name">Dižkoki un dabas pieminekļi</span>
+                      {currentZoom < 9 && <span className="lc-row-hint">pietuviniet</span>}
+                      <button className={`lc-tog ${showNature ? 'on' : ''}`} type="button" tabIndex={-1}>
+                        <div className="lc-tog-k" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 5. VIDES RISKI UN PIESĀRŅOJUMS */}
                 <div className="lc-cat open" style={{ marginTop: 8 }}>
                   <div className="lc-cat-hdr">
                     <div className="lc-tile" style={{ background: '#fee2e2', color: '#dc2626' }}>⚠️</div>
                     <span style={{ fontWeight: 700, fontSize: 13, flex: 1 }}>Vides riski & Piesārņojums</span>
                   </div>
                   <div className="lc-layers">
-                    <div className={`lc-row ${showPollution ? 'on' : ''}`} onClick={() => setShowPollution(!showPollution)}>
-                      <div className="lc-swatch" style={{ background: '#dc2626' }} />
-                      <span className="lc-row-name">VVD Piesārņotās vietas</span>
-                      <button className={`lc-tog ${showPollution ? 'on' : ''}`} type="button" tabIndex={-1}>
-                        <div className="lc-tog-k" />
-                      </button>
-                    </div>
                     <div className={`lc-row ${showFloods ? 'on' : ''}`} onClick={() => setShowFloods(!showFloods)}>
                       <div className="lc-swatch" style={{ background: '#0284c7' }} />
                       <span className="lc-row-name">LVĢMC Plūdu riska zonas</span>
@@ -1128,10 +1625,68 @@ export default function App() {
                         <div className="lc-tog-k" />
                       </button>
                     </div>
+                    <div className={`lc-row ${showPollution ? 'on' : ''}`} onClick={() => setShowPollution(!showPollution)}>
+                      <div className="lc-swatch" style={{ background: '#dc2626' }} />
+                      <span className="lc-row-name">VVD Piesārņotās vietas</span>
+                      <button className={`lc-tog ${showPollution ? 'on' : ''}`} type="button" tabIndex={-1}>
+                        <div className="lc-tog-k" />
+                      </button>
+                    </div>
+                    <div className={`lc-row ${showDegrading ? 'on' : ''}`} onClick={() => setShowDegrading(!showDegrading)}>
+                      <div className="lc-swatch" style={{ background: '#b91c1c' }} />
+                      <span className="lc-row-name">Vidi degradējošas ēkas (grausti)</span>
+                      {currentZoom < 10 && <span className="lc-row-hint">pietuviniet</span>}
+                      <button className={`lc-tog ${showDegrading ? 'on' : ''}`} type="button" tabIndex={-1}>
+                        <div className="lc-tog-k" />
+                      </button>
+                    </div>
                   </div>
                 </div>
 
-                {/* 5. PAMATNE */}
+                {/* 6. ENERGOEFEKTIVITĀTE */}
+                <div className="lc-cat open" style={{ marginTop: 8 }}>
+                  <div className="lc-cat-hdr">
+                    <div className="lc-tile" style={{ background: '#fef3c7', color: '#d97706' }}>⚡</div>
+                    <span style={{ fontWeight: 700, fontSize: 13, flex: 1 }}>Ēka un energoefektivitāte</span>
+                  </div>
+                  <div className="lc-layers">
+                    <div className={`lc-row ${showEnergy ? 'on' : ''}`} onClick={() => setShowEnergy(!showEnergy)}>
+                      <div className="lc-swatch" style={{ background: '#d97706' }} />
+                      <span className="lc-row-name">BVKB Energosertifikāti (A+ līdz G)</span>
+                      <button className={`lc-tog ${showEnergy ? 'on' : ''}`} type="button" tabIndex={-1}>
+                        <div className="lc-tog-k" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 7. APKĀRTNE UN INFRASTRUKTŪRA */}
+                <div className="lc-cat open" style={{ marginTop: 8 }}>
+                  <div className="lc-cat-hdr">
+                    <div className="lc-tile" style={{ background: '#ddf0ef', color: '#1f7a74' }}>🚌</div>
+                    <span style={{ fontWeight: 700, fontSize: 13, flex: 1 }}>Apkārtne un infrastruktūra</span>
+                  </div>
+                  <div className="lc-layers">
+                    <div className={`lc-row ${showSchools ? 'on' : ''}`} onClick={() => setShowSchools(!showSchools)}>
+                      <div className="lc-swatch" style={{ background: '#2563eb' }} />
+                      <span className="lc-row-name">Skolas un bērnudārzi</span>
+                      {currentZoom < 8 && <span className="lc-row-hint">pietuviniet</span>}
+                      <button className={`lc-tog ${showSchools ? 'on' : ''}`} type="button" tabIndex={-1}>
+                        <div className="lc-tog-k" />
+                      </button>
+                    </div>
+                    <div className={`lc-row ${showTransports ? 'on' : ''}`} onClick={() => setShowTransports(!showTransports)}>
+                      <div className="lc-swatch" style={{ background: '#0284c7' }} />
+                      <span className="lc-row-name">Sabiedriskais transports</span>
+                      {currentZoom < 9 && <span className="lc-row-hint">pietuviniet</span>}
+                      <button className={`lc-tog ${showTransports ? 'on' : ''}`} type="button" tabIndex={-1}>
+                        <div className="lc-tog-k" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 8. PAMATNE */}
                 <div className="lc-cat open" style={{ marginTop: 8 }}>
                   <div className="lc-cat-hdr">
                     <div className="lc-tile" style={{ background: '#f1f5f9', color: '#0f172a' }}>🛰️</div>
