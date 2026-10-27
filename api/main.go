@@ -1,0 +1,262 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+)
+
+var dbPool *pgxpool.Pool
+
+func main() {
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+
+	dbURL := os.Getenv("DATABASE_URL")
+	if dbURL == "" {
+		dbURL = "postgresql://kartes:kartes_secret_password@db:5432/kartes"
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	var err error
+	config, err := pgxpool.ParseConfig(dbURL)
+	if err != nil {
+		log.Fatalf("Nevar nolasīt datubāzes konfigurāciju: %v", err)
+	}
+	config.MaxConns = 25
+	config.MinConns = 5
+
+	dbPool, err = pgxpool.NewWithConfig(ctx, config)
+	if err != nil {
+		log.Fatalf("Nevar izveidot savienojumu pūlu: %v", err)
+	}
+	defer dbPool.Close()
+
+	if err := dbPool.Ping(ctx); err != nil {
+		log.Printf("Brīdinājums: Datubāze vēl nav pilnībā gatava pingam: %v", err)
+	} else {
+		log.Println("Veiksmīgi izveidots savienojums ar PostgreSQL/PostGIS!")
+	}
+
+	mux := http.NewServeMux()
+
+	// Reģistrē maršrutus
+	mux.HandleFunc("GET /api/health", handleHealth)
+	mux.HandleFunc("GET /api/parcel-info", handleParcelInfo)
+	mux.HandleFunc("GET /api/address-suggest", handleAddressSuggest)
+	mux.HandleFunc("GET /api/transactions", handleTransactions)
+
+	handler := enableCORS(mux)
+
+	server := &http.Server{
+		Addr:         ":" + port,
+		Handler:      handler,
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: 10 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
+
+	// Graceful shutdown
+	go func() {
+		log.Printf("Kartes Go API serveris palaists uz porta :%s\n", port)
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("Servera kļūda: %v", err)
+		}
+	}()
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+
+	log.Println("Serveris tiek apturēts...")
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer shutdownCancel()
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		log.Printf("Servera apturēšanas kļūda: %v", err)
+	}
+	log.Println("Serveris apturēts veiksmīgi.")
+}
+
+func enableCORS(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
+func writeJSON(w http.ResponseWriter, status int, data any) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(data)
+}
+
+func handleHealth(w http.ResponseWriter, r *http.Request) {
+	dbStatus := "connected"
+	if err := dbPool.Ping(r.Context()); err != nil {
+		dbStatus = "error: " + err.Error()
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"status":   "ok",
+		"database": dbStatus,
+		"time":     time.Now().Format(time.RFC3339),
+		"engine":   "Go (net/http + pgx/v5)",
+	})
+}
+
+// /api/parcel-info?code=01000070001
+func handleParcelInfo(w http.ResponseWriter, r *http.Request) {
+	code := r.URL.Query().Get("code")
+	if code == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Parametrs 'code' ir obligāts"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+
+	query := `
+		SELECT code, COALESCE(address, ''), COALESCE(area_m2, 0), COALESCE(status, ''), COALESCE(cadastral_value, 0)
+		FROM public.parcels
+		WHERE code = $1
+		LIMIT 1;
+	`
+
+	var pCode, address, status string
+	var areaM2, cadValue float64
+
+	err := dbPool.QueryRow(ctx, query, code).Scan(&pCode, &address, &areaM2, &status, &cadValue)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{
+			"error": fmt.Sprintf("Zemes vienība ar kodu '%s' netika atrasta", code),
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"code":            pCode,
+		"address":         address,
+		"area_m2":         areaM2,
+		"status":          status,
+		"cadastral_value": cadValue,
+	})
+}
+
+// /api/address-suggest?q=Doma
+func handleAddressSuggest(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query().Get("q")
+	if len(q) < 2 {
+		writeJSON(w, http.StatusOK, []any{})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+
+	// Trigramu līdzības meklēšana ar unaccent normalizāciju
+	query := `
+		SELECT code, address
+		FROM public.parcels
+		WHERE lv_normalize(address) ILIKE '%' || lv_normalize($1) || '%'
+		ORDER BY similarity(lv_normalize(address), lv_normalize($1)) DESC
+		LIMIT 10;
+	`
+
+	rows, err := dbPool.Query(ctx, query, q)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	type Suggestion struct {
+		Code    string `json:"code"`
+		Address string `json:"address"`
+	}
+
+	var results []Suggestion
+	for rows.Next() {
+		var s Suggestion
+		if err := rows.Scan(&s.Code, &s.Address); err == nil {
+			results = append(results, s)
+		}
+	}
+
+	if results == nil {
+		results = []Suggestion{}
+	}
+
+	writeJSON(w, http.StatusOK, results)
+}
+
+// /api/transactions?cadastre=01000070001
+func handleTransactions(w http.ResponseWriter, r *http.Request) {
+	cad := r.URL.Query().Get("cadastre")
+	if cad == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Parametrs 'cadastre' ir obligāts"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+
+	query := `
+		SELECT deal_id, cadastre_code, deal_date, amount_eur, COALESCE(area_m2, 0), COALESCE(price_per_m2, 0), property_type, COALESCE(address, '')
+		FROM public.transactions
+		WHERE cadastre_code = $1
+		ORDER BY deal_date DESC
+		LIMIT 50;
+	`
+
+	rows, err := dbPool.Query(ctx, query, cad)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	type Deal struct {
+		DealID       int64     `json:"deal_id"`
+		CadastreCode string    `json:"cadastre_code"`
+		DealDate     time.Time `json:"deal_date"`
+		AmountEur    float64   `json:"amount_eur"`
+		AreaM2       float64   `json:"area_m2"`
+		PricePerM2   float64   `json:"price_per_m2"`
+		PropertyType string    `json:"property_type"`
+		Address      string    `json:"address"`
+	}
+
+	var deals []Deal
+	for rows.Next() {
+		var d Deal
+		if err := rows.Scan(&d.DealID, &d.CadastreCode, &d.DealDate, &d.AmountEur, &d.AreaM2, &d.PricePerM2, &d.PropertyType, &d.Address); err == nil {
+			deals = append(deals, d)
+		}
+	}
+
+	if deals == nil {
+		deals = []Deal{}
+	}
+
+	writeJSON(w, http.StatusOK, deals)
+}

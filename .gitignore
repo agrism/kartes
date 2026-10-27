@@ -1,0 +1,17 @@
+# Environment
+.env
+!.env.example
+
+# Database data
+pg_data/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Node / Python scratch
+node_modules/
+__pycache__/
+*.pyc
+venv/
+.venv/

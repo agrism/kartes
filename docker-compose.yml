@@ -1,0 +1,83 @@
+services:
+  # 1. PostgreSQL 17 ar PostGIS 3.5 telpiskajam datu kodolam
+  db:
+    image: postgis/postgis:17-3.5
+    container_name: kartes-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-kartes}
+      POSTGRES_USER: ${POSTGRES_USER:-kartes}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-kartes_secret_password}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./docker/init-db:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    # shm_size ir kritiski svarīgs lieliem PostGIS telpiskajiem vaicājumiem un paralēlajam GIST indeksu darbam
+    shm_size: 1g
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-kartes} -d ${POSTGRES_DB:-kartes}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  # 2. Martin: Rust bāzēts īpaši ātrs vektoru flīžu (MVT) serveris
+  martin:
+    image: ghcr.io/maplibre/martin:latest
+    container_name: kartes-martin
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-kartes}:${POSTGRES_PASSWORD:-kartes_secret_password}@db:5432/${POSTGRES_DB:-kartes}
+    ports:
+      - "${MARTIN_PORT:-3000}:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # 3. Go Backend API: Zibenīgs REST API ar pgx/v5 pieslēgumu PostGIS (viss būvējas Docker iekšienē)
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: kartes-api
+    restart: unless-stopped
+    environment:
+      PORT: 8080
+      DATABASE_URL: postgresql://${POSTGRES_USER:-kartes}:${POSTGRES_PASSWORD:-kartes_secret_password}@db:5432/${POSTGRES_DB:-kartes}
+    ports:
+      - "${API_PORT:-8080}:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # 4. In-Memory Cache: Dragonfly (25x ātrāks par standarta Redis, pilnībā savietojams)
+  cache:
+    image: docker.dragonflydb.io/dragonflydb/dragonfly:latest
+    container_name: kartes-cache
+    restart: unless-stopped
+    ports:
+      - "${CACHE_PORT:-6379}:6379"
+
+  # 5. pgAdmin: Izvēles Web GUI ģeotelpisko datu, tabulu un vaicājumu apskatei
+  # Lai palaistu kopā ar pgAdmin: docker compose --profile tools up -d
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: kartes-pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-admin@kartes.local}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:-admin}
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+    ports:
+      - "${PGADMIN_PORT:-5050}:80"
+    depends_on:
+      db:
+        condition: service_healthy
+    profiles:
+      - tools
+
+volumes:
+  pg_data:
+    driver: local
