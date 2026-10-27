@@ -29,9 +29,10 @@ interface Suggestion {
 
 function getEndpoints() {
   const isLocal = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
   return {
-    apiBase: (import.meta as any).env.VITE_API_URL || (isLocal ? 'http://localhost:8090' : ''),
-    tilesBase: (import.meta as any).env.VITE_TILES_URL || (isLocal ? 'http://localhost:3000' : '/tiles'),
+    apiBase: (import.meta as any).env.VITE_API_URL || (isLocal ? 'http://localhost:8090' : origin),
+    tilesBase: (import.meta as any).env.VITE_TILES_URL || (isLocal ? 'http://localhost:3000' : `${origin}/tiles`),
   };
 }
 
