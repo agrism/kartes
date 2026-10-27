@@ -1,12 +1,28 @@
 import React, { useEffect, useRef, useState } from 'react';
 import maplibregl from 'maplibre-gl';
 
+interface EnergyCertInfo {
+  class: string;
+  heating_kwh_m2?: number;
+  valid_until?: string;
+  status?: string;
+}
+
+interface PollutionNearbyInfo {
+  name: string;
+  category: string;
+  site_type: string;
+  distance_m: number;
+}
+
 interface ParcelInfo {
   code: string;
   address: string;
   area_m2: number;
   status: string;
   cadastral_value: number;
+  energy_cert?: EnergyCertInfo | null;
+  pollution_nearby?: PollutionNearbyInfo[];
 }
 
 interface Transaction {
@@ -51,6 +67,10 @@ export default function App() {
   const [showParcels, setShowParcels] = useState(true);
   const [showBuildings, setShowBuildings] = useState(true);
   const [showTransactions, setShowTransactions] = useState(true);
+  const [showFloods, setShowFloods] = useState(false);
+  const [showEnergy, setShowEnergy] = useState(true);
+  const [showPollution, setShowPollution] = useState(true);
+  const [isSatellite, setIsSatellite] = useState(false);
 
   // Inicializē MapLibre karti
   useEffect(() => {
@@ -66,6 +86,40 @@ export default function App() {
     m.addControl(new maplibregl.NavigationControl(), 'bottom-right');
 
     m.on('load', () => {
+      // 0. Satelīta aerofoto pamatne (Esri World Imagery)
+      m.addSource('esri-satellite', {
+        type: 'raster',
+        tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
+        tileSize: 256,
+        maxzoom: 19,
+      });
+
+      m.addLayer({
+        id: 'satellite-layer',
+        type: 'raster',
+        source: 'esri-satellite',
+        layout: { visibility: 'none' },
+      });
+
+      // 0b. LVĢMC Plūdu riska zonas (Oficiālais WMS serviss)
+      m.addSource('flood-zones', {
+        type: 'raster',
+        tiles: [
+          'https://geo-dpps.viss.gov.lv/api/DPPSPackage/client/3._cikla_L_557_7iFPTq/b7ad025f-833a-4b4f-a845-d5cec9d24092?service=WMS&version=1.3.0&request=GetMap&layers=0,1,3&styles=&bbox={bbox-epsg-3857}&width=256&height=256&crs=EPSG:3857&format=image/png&transparent=true',
+        ],
+        tileSize: 256,
+      });
+
+      m.addLayer({
+        id: 'flood-layer',
+        type: 'raster',
+        source: 'flood-zones',
+        layout: { visibility: 'none' },
+        paint: {
+          'raster-opacity': 0.65,
+        },
+      });
+
       // 1. ZEMES VIENĪBAS (Parcels)
       m.addSource('parcels', {
         type: 'vector',
@@ -161,8 +215,68 @@ export default function App() {
         },
       });
 
+      // 4. BVKB ĒKU ENERGOSERTIFIKĀTI
+      m.addSource('energy', {
+        type: 'vector',
+        tiles: [`${TILES_BASE}/energy_certificates/{z}/{x}/{y}`],
+        minzoom: 11,
+        maxzoom: 22,
+      });
+
+      m.addLayer({
+        id: 'energy-dots',
+        type: 'circle',
+        source: 'energy',
+        'source-layer': 'energy_certificates',
+        minzoom: 12,
+        paint: {
+          'circle-radius': ['interpolate', ['linear'], ['zoom'], 12, 3.5, 15, 6, 18, 9],
+          'circle-color': [
+            'match', ['get', 'energy_class'],
+            'A+', '#16a34a',
+            'A', '#16a34a',
+            'B', '#65a30d',
+            'C', '#ca8a04',
+            'D', '#ea580c',
+            'E', '#e11d48',
+            'F', '#b91c1c',
+            'G', '#991b1b',
+            '#94a3b8',
+          ],
+          'circle-stroke-width': 1.5,
+          'circle-stroke-color': '#ffffff',
+          'circle-opacity': 0.9,
+        },
+      });
+
+      // 5. VVD PIESĀRŅOTĀS VIETAS
+      m.addSource('pollution', {
+        type: 'vector',
+        tiles: [`${TILES_BASE}/pollution_sites/{z}/{x}/{y}`],
+        minzoom: 8,
+        maxzoom: 22,
+      });
+
+      m.addLayer({
+        id: 'pollution-dots',
+        type: 'circle',
+        source: 'pollution',
+        'source-layer': 'pollution_sites',
+        paint: {
+          'circle-radius': ['interpolate', ['linear'], ['zoom'], 8, 4, 14, 7, 18, 10],
+          'circle-color': [
+            'match', ['get', 'category'],
+            'Piesārņota vieta', '#dc2626',
+            '#ca8a04',
+          ],
+          'circle-stroke-width': 2,
+          'circle-stroke-color': '#ffffff',
+          'circle-opacity': 0.9,
+        },
+      });
+
       // Interaktivitāte kursoram
-      const interactiveLayers = ['parcels-fill', 'buildings-fill', 'transactions-circle'];
+      const interactiveLayers = ['parcels-fill', 'buildings-fill', 'transactions-circle', 'energy-dots', 'pollution-dots'];
       interactiveLayers.forEach((layer) => {
         m.on('mouseenter', layer, () => {
           m.getCanvas().style.cursor = 'pointer';
@@ -196,6 +310,46 @@ export default function App() {
           fetchParcelDetails(code);
         }
       });
+
+      m.on('click', 'energy-dots', (e) => {
+        if (!e.features || !e.features[0]) return;
+        const p = e.features[0].properties;
+        const pCode = p?.parcel_code || p?.building_code;
+        new maplibregl.Popup()
+          .setLngLat(e.lngLat)
+          .setHTML(`
+            <div style="font-family: inherit; padding: 4px;">
+              <div style="font-size: 11px; text-transform: uppercase; color: #64748b; font-weight: 700;">Ēkas energosertifikāts</div>
+              <div style="display: flex; align-items: center; gap: 8px; margin: 6px 0;">
+                <span style="background: #16a34a; color: white; font-weight: 800; padding: 2px 8px; border-radius: 4px; font-size: 14px;">${p?.energy_class || '—'} klase</span>
+                <span style="font-size: 13px; font-weight: 600;">${p?.heating_kwh_m2 ? Math.round(p.heating_kwh_m2) + ' kWh/m² gadā' : ''}</span>
+              </div>
+              <div style="font-size: 11px; color: #475569;">${p?.address || ''}</div>
+              <div style="font-size: 11px; color: #64748b; margin-top: 4px;">Statuss: ${p?.status || ''}</div>
+            </div>
+          `)
+          .addTo(m);
+        if (pCode) fetchParcelDetails(pCode.slice(0, 11));
+      });
+
+      m.on('click', 'pollution-dots', (e) => {
+        if (!e.features || !e.features[0]) return;
+        const p = e.features[0].properties;
+        const isHigh = p?.category === 'Piesārņota vieta';
+        new maplibregl.Popup()
+          .setLngLat(e.lngLat)
+          .setHTML(`
+            <div style="font-family: inherit; padding: 4px;">
+              <div style="font-size: 11px; text-transform: uppercase; color: ${isHigh ? '#dc2626' : '#ca8a04'}; font-weight: 800;">
+                ⚠️ ${p?.category || 'Piesārņota vieta'}
+              </div>
+              <div style="font-weight: 700; font-size: 13px; margin: 4px 0;">${p?.name || 'VVD objekts'}</div>
+              <div style="font-size: 12px; color: #475569;">${p?.site_type || ''}</div>
+              <div style="font-size: 11px; color: #64748b; margin-top: 2px;">${p?.address || ''} (${p?.place || ''})</div>
+            </div>
+          `)
+          .addTo(m);
+      });
     });
 
     map.current = m;
@@ -211,6 +365,12 @@ export default function App() {
     if (!map.current || !map.current.isStyleLoaded()) return;
     const visibility = (show: boolean) => (show ? 'visible' : 'none');
 
+    if (map.current.getLayer('satellite-layer')) {
+      map.current.setLayoutProperty('satellite-layer', 'visibility', isSatellite ? 'visible' : 'none');
+    }
+    if (map.current.getLayer('flood-layer')) {
+      map.current.setLayoutProperty('flood-layer', 'visibility', showFloods ? 'visible' : 'none');
+    }
     if (map.current.getLayer('parcels-fill')) {
       map.current.setLayoutProperty('parcels-fill', 'visibility', visibility(showParcels));
       map.current.setLayoutProperty('parcels-line', 'visibility', visibility(showParcels));
@@ -222,7 +382,13 @@ export default function App() {
     if (map.current.getLayer('transactions-circle')) {
       map.current.setLayoutProperty('transactions-circle', 'visibility', visibility(showTransactions));
     }
-  }, [showParcels, showBuildings, showTransactions]);
+    if (map.current.getLayer('energy-dots')) {
+      map.current.setLayoutProperty('energy-dots', 'visibility', visibility(showEnergy));
+    }
+    if (map.current.getLayer('pollution-dots')) {
+      map.current.setLayoutProperty('pollution-dots', 'visibility', visibility(showPollution));
+    }
+  }, [showParcels, showBuildings, showTransactions, showFloods, showEnergy, showPollution, isSatellite]);
 
   // Iegūst zemes vienības datus un darījumus no Go API
   const fetchParcelDetails = async (code: string) => {
@@ -333,6 +499,12 @@ export default function App() {
         {/* Slāņu ieslēgšanas/izslēgšanas poga */}
         <div className="layer-pills">
           <button
+            className={`layer-pill ${isSatellite ? 'active-dark' : ''}`}
+            onClick={() => setIsSatellite(!isSatellite)}
+          >
+            {isSatellite ? '🗺️ Karte' : '🛰️ Satelīts'}
+          </button>
+          <button
             className={`layer-pill ${showParcels ? 'active-green' : ''}`}
             onClick={() => setShowParcels(!showParcels)}
           >
@@ -350,11 +522,32 @@ export default function App() {
           >
             💶 Darījumi
           </button>
+          <button
+            className={`layer-pill ${showFloods ? 'active-cyan' : ''}`}
+            onClick={() => setShowFloods(!showFloods)}
+            title="LVĢMC oficiālās plūdu riska kartes (10, 100 un 200 gadu scenāriji)"
+          >
+            🌊 Plūdi
+          </button>
+          <button
+            className={`layer-pill ${showEnergy ? 'active-amber' : ''}`}
+            onClick={() => setShowEnergy(!showEnergy)}
+            title="BVKB ēku energoefektivitātes klases (A+ līdz G)"
+          >
+            ⚡ Enerģija
+          </button>
+          <button
+            className={`layer-pill ${showPollution ? 'active-red' : ''}`}
+            onClick={() => setShowPollution(!showPollution)}
+            title="VVD reģistrētās piesārņotās un potenciāli piesārņotās vietas"
+          >
+            ⚠️ Piesārņojums
+          </button>
         </div>
 
         {/* Statistika */}
         <div className="stat-badge">
-          <span>🇱🇻 VZD Atvērtie dati</span>
+          <span>🇱🇻 VZD + LVĢMC + BVKB</span>
         </div>
       </div>
 
@@ -406,10 +599,74 @@ export default function App() {
               </div>
             </div>
 
+            {/* Energoefektivitātes sadaļa */}
+            <div className="section-card">
+              <div className="section-title">⚡ Ēkas energoefektivitāte (BVKB)</div>
+              {selectedParcel.energy_cert ? (
+                <div>
+                  <div className="energy-card-row">
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: '14px' }}>
+                        {selectedParcel.energy_cert.class} klase
+                      </div>
+                      <div style={{ fontSize: '12px', color: '#64748b' }}>
+                        {selectedParcel.energy_cert.heating_kwh_m2
+                          ? `${Math.round(selectedParcel.energy_cert.heating_kwh_m2)} kWh/m² gadā (apkure)`
+                          : 'Aprēķinātais patēriņš nav norādīts'}
+                      </div>
+                    </div>
+                    <span
+                      className={`energy-badge-pill energy-${selectedParcel.energy_cert.class.replace('+', '-plus')}`}
+                    >
+                      {selectedParcel.energy_cert.class}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '8px' }}>
+                    Statuss: {selectedParcel.energy_cert.status || 'Reģistrēts'}
+                    {selectedParcel.energy_cert.valid_until && ` · Derīgs līdz ${selectedParcel.energy_cert.valid_until}`}
+                  </div>
+                </div>
+              ) : (
+                <div style={{ fontSize: '13px', color: '#6b7280', padding: '4px 0' }}>
+                  Šim īpašumam BVKB reģistrā publisks energosertifikāts nav atrasts.
+                </div>
+              )}
+            </div>
+
+            {/* Vides riski & Piesārņojums */}
+            <div className="section-card">
+              <div className="section-title">⚠️ Vides riski un piesārņojums (VVD)</div>
+              {selectedParcel.pollution_nearby && selectedParcel.pollution_nearby.length > 0 ? (
+                <div>
+                  <div style={{ fontSize: '12px', color: '#b91c1c', fontWeight: 600, marginBottom: '6px' }}>
+                    Tuvumā konstatēti piesārņojuma riska objekti (≤ 500 m):
+                  </div>
+                  {selectedParcel.pollution_nearby.map((p, idx) => (
+                    <div
+                      key={idx}
+                      className={`risk-alert-item ${p.category === 'Piesārņota vieta' ? 'bad' : 'warn'}`}
+                    >
+                      <div style={{ fontWeight: 700, display: 'flex', justifyContent: 'space-between' }}>
+                        <span>{p.name}</span>
+                        <span>{Math.round(p.distance_m)} m</span>
+                      </div>
+                      <div style={{ fontSize: '11px', opacity: 0.9 }}>
+                        {p.category} · {p.site_type}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="risk-alert-item ok">
+                  ✓ 500 m rādiusā oficiāli reģistrētu piesārņoto vietu nav konstatēts.
+                </div>
+              )}
+            </div>
+
             {/* Darījumu sadaļa */}
             <div className="section-card">
               <div className="section-title">
-                VZD Darījumu vēsture ({transactions.length})
+                💶 VZD Darījumu vēsture ({transactions.length})
               </div>
               {transactions.length === 0 ? (
                 <div style={{ fontSize: '13px', color: '#6b7280', padding: '6px 0' }}>

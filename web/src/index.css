@@ -293,6 +293,84 @@ html, body, #root {
   box-shadow: 0 2px 8px rgba(2, 132, 199, 0.3);
 }
 
+.layer-pill.active-cyan {
+  background: #0284c7;
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(2, 132, 199, 0.35);
+}
+
+.layer-pill.active-amber {
+  background: #d97706;
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(217, 119, 6, 0.35);
+}
+
+.layer-pill.active-red {
+  background: #dc2626;
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(220, 38, 38, 0.35);
+}
+
+.layer-pill.active-dark {
+  background: #0f172a;
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.4);
+}
+
+/* Energy & Environmental Risk cards in Sidebar */
+.energy-card-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 6px;
+}
+
+.energy-badge-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  height: 28px;
+  border-radius: 6px;
+  font-weight: 800;
+  font-size: 15px;
+  color: #ffffff;
+  padding: 0 8px;
+}
+
+.energy-A-plus, .energy-A { background: #16a34a; }
+.energy-B { background: #65a30d; }
+.energy-C { background: #ca8a04; }
+.energy-D { background: #ea580c; }
+.energy-E { background: #e11d48; }
+.energy-F, .energy-G { background: #b91c1c; }
+
+.risk-alert-item {
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.4;
+  margin-bottom: 6px;
+}
+
+.risk-alert-item.bad {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #991b1b;
+}
+
+.risk-alert-item.warn {
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  color: #92400e;
+}
+
+.risk-alert-item.ok {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  color: #166534;
+}
+
 .stat-badge {
   display: flex;
   align-items: center;
