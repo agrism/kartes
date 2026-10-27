@@ -101,25 +101,6 @@ export default function App() {
         layout: { visibility: 'none' },
       });
 
-      // 0b. LVĢMC Plūdu riska zonas (Oficiālais WMS serviss)
-      m.addSource('flood-zones', {
-        type: 'raster',
-        tiles: [
-          'https://geo-dpps.viss.gov.lv/api/DPPSPackage/client/3._cikla_L_557_7iFPTq/b7ad025f-833a-4b4f-a845-d5cec9d24092?service=WMS&version=1.3.0&request=GetMap&layers=0,1,3&styles=&bbox={bbox-epsg-3857}&width=256&height=256&crs=EPSG:3857&format=image/png&transparent=true',
-        ],
-        tileSize: 256,
-      });
-
-      m.addLayer({
-        id: 'flood-layer',
-        type: 'raster',
-        source: 'flood-zones',
-        layout: { visibility: 'none' },
-        paint: {
-          'raster-opacity': 0.65,
-        },
-      });
-
       // 1. ZEMES VIENĪBAS (Parcels)
       m.addSource('parcels', {
         type: 'vector',
@@ -367,9 +348,6 @@ export default function App() {
 
     if (map.current.getLayer('satellite-layer')) {
       map.current.setLayoutProperty('satellite-layer', 'visibility', isSatellite ? 'visible' : 'none');
-    }
-    if (map.current.getLayer('flood-layer')) {
-      map.current.setLayoutProperty('flood-layer', 'visibility', showFloods ? 'visible' : 'none');
     }
     if (map.current.getLayer('parcels-fill')) {
       map.current.setLayoutProperty('parcels-fill', 'visibility', visibility(showParcels));
