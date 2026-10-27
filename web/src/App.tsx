@@ -116,7 +116,11 @@ export default function App() {
     }
   };
 
-  const [currentZoom, setCurrentZoom] = useState(16);
+  const [currentZoom, setCurrentZoom] = useState(
+    typeof window !== 'undefined' && window.location.hash.length > 3
+      ? parseFloat(window.location.hash.slice(1).split('/')[0]) || 7.2
+      : 7.2
+  );
 
   // Inicializē MapLibre karti
   useEffect(() => {
@@ -165,9 +169,26 @@ export default function App() {
 
               const el = document.createElement('div');
               el.className = 'mix-mk';
-              el.style.cssText = `width:${2 * R}px;height:${2 * R}px;background:conic-gradient(#2f8a55 0 ${deg}deg,#7b1fa2 ${deg}deg 360deg);font-size:${R > 26 ? 12 : 10.5}px;`;
+              el.style.width = `${2 * R}px`;
+              el.style.height = `${2 * R}px`;
+              el.style.background = `conic-gradient(#2f8a55 0 ${deg}deg, #7b1fa2 ${deg}deg 360deg)`;
+              el.style.fontSize = `${R > 26 ? 12 : 10.5}px`;
               el.title = `${fmt(l)} sludinājumi · ${fmt(t)} objekti ar darījumu`;
-              el.innerHTML = `<div>${l ? `<span style="color:#2f8a55">${fmt(l)}</span>` : ''}${t ? `<span style="color:#7b1fa2">${fmt(t)}</span>` : ''}</div>`;
+
+              const inner = document.createElement('div');
+              if (l > 0) {
+                const s1 = document.createElement('span');
+                s1.style.color = '#2f8a55';
+                s1.textContent = fmt(l);
+                inner.appendChild(s1);
+              }
+              if (t > 0) {
+                const s2 = document.createElement('span');
+                s2.style.color = '#7b1fa2';
+                s2.textContent = fmt(t);
+                inner.appendChild(s2);
+              }
+              el.appendChild(inner);
 
               el.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -251,6 +272,12 @@ export default function App() {
 
       m.on('render', updateMixMarkers);
       m.on('moveend', updateMixMarkers);
+      m.on('idle', updateMixMarkers);
+      m.on('data', (e) => {
+        if (e.sourceId === 'mix-pts' && e.isSourceLoaded) {
+          updateMixMarkers();
+        }
+      });
 
       // Ielādējam klasteru punktus (darījumus un sludinājumus)
       Promise.all([
@@ -288,6 +315,9 @@ export default function App() {
             type: 'FeatureCollection',
             features: feats,
           });
+          setTimeout(updateMixMarkers, 50);
+          setTimeout(updateMixMarkers, 300);
+          setTimeout(updateMixMarkers, 800);
         }
       }).catch((e) => console.error('Error loading points:', e));
 
