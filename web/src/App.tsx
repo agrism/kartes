@@ -64,24 +64,29 @@ export default function App() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // Slāņu redzamība
+  // Slāņu redzamība (kadastrakarte.lv pēc noklusējuma: 4 no 38 aktīvi)
   const [showParcels, setShowParcels] = useState(true);
   const [showBuildings, setShowBuildings] = useState(true);
   const [showTransactions, setShowTransactions] = useState(true);
+  const [showListings, setShowListings] = useState(true);
   const [showFloods, setShowFloods] = useState(false);
-  const [showEnergy, setShowEnergy] = useState(true);
-  const [showPollution, setShowPollution] = useState(true);
+  const [showEnergy, setShowEnergy] = useState(false);
+  const [showPollution, setShowPollution] = useState(false);
   const [isSatellite, setIsSatellite] = useState(false);
 
   // Slāņu panelis (atvērts/aizvērts) - pēc noklusējuma sakļauts kā kadastrakarte.lv
   const [isLayersOpen, setIsLayersOpen] = useState(false);
   const showTransactionsRef = useRef(showTransactions);
   showTransactionsRef.current = showTransactions;
+  const showListingsRef = useRef(showListings);
+  showListingsRef.current = showListings;
+  const updateMixMarkersRef = useRef<() => void>(() => {});
 
   const activeLayersCount =
     (showParcels ? 1 : 0) +
     (showBuildings ? 1 : 0) +
     (showTransactions ? 1 : 0) +
+    (showListings ? 1 : 0) +
     (showEnergy ? 1 : 0) +
     (showPollution ? 1 : 0) +
     (showFloods ? 1 : 0) +
@@ -91,6 +96,7 @@ export default function App() {
     setShowParcels(false);
     setShowBuildings(false);
     setShowTransactions(false);
+    setShowListings(false);
     setShowEnergy(false);
     setShowPollution(false);
     setShowFloods(false);
@@ -150,7 +156,10 @@ export default function App() {
       const zoom = m.getZoom();
       const next: { [id: string]: maplibregl.Marker } = {};
 
-      if (zoom < 14 && showTransactionsRef.current) {
+      const showL = showListingsRef.current;
+      const showT = showTransactionsRef.current;
+
+      if (zoom < 14 && (showL || showT)) {
         try {
           const features = m.querySourceFeatures('mix-pts');
           for (const f of features) {
@@ -160,31 +169,32 @@ export default function App() {
 
             let marker = mixMkMap[id];
             if (!marker) {
-              const l = Number(f.properties.l) || 0;
-              const t = Number(f.properties.t) || 0;
+              const l = showL ? (Number(f.properties.l) || 0) : 0;
+              const t = showT ? (Number(f.properties.t) || 0) : 0;
               const n = l + t;
-              const fmt = (v: number) => v.toLocaleString('lv-LV');
-              const R = Math.round(Math.min(38, 16 + Math.sqrt(n) * 0.6));
+              if (n === 0) continue;
+
+              const fmt = (v: number) => v.toLocaleString('lv-LV').replace(/\s/g, ' ');
+              const R = Math.round(Math.min(38, Math.max(25, 21 + Math.log10(Math.max(1, n)) * 3.5)));
               const deg = n > 0 ? (360 * l / n).toFixed(1) : '0';
 
               const el = document.createElement('div');
-              el.className = 'mix-mk';
+              el.className = 'mix-mk' + (R >= 33 ? ' lg' : '');
               el.style.width = `${2 * R}px`;
               el.style.height = `${2 * R}px`;
               el.style.background = `conic-gradient(#2f8a55 0 ${deg}deg, #7b1fa2 ${deg}deg 360deg)`;
-              el.style.fontSize = `${R > 26 ? 12 : 10.5}px`;
               el.title = `${fmt(l)} sludinājumi · ${fmt(t)} objekti ar darījumu`;
 
               const inner = document.createElement('div');
               if (l > 0) {
                 const s1 = document.createElement('span');
-                s1.style.color = '#2f8a55';
+                s1.className = 'mix-l';
                 s1.textContent = fmt(l);
                 inner.appendChild(s1);
               }
               if (t > 0) {
                 const s2 = document.createElement('span');
-                s2.style.color = '#7b1fa2';
+                s2.className = 'mix-t';
                 s2.textContent = fmt(t);
                 inner.appendChild(s2);
               }
@@ -226,6 +236,17 @@ export default function App() {
       mixShownMap = next;
     };
 
+    updateMixMarkersRef.current = () => {
+      for (const id in mixShownMap) {
+        mixShownMap[id].remove();
+      }
+      for (const id in mixMkMap) {
+        delete mixMkMap[id];
+      }
+      mixShownMap = {};
+      updateMixMarkers();
+    };
+
     m.on('load', () => {
       updateZoom();
       // 0. Satelīta aerofoto pamatne (Esri World Imagery)
@@ -248,7 +269,7 @@ export default function App() {
         type: 'geojson',
         data: { type: 'FeatureCollection', features: [] },
         cluster: true,
-        clusterRadius: 75,
+        clusterRadius: 105,
         clusterMaxZoom: 13,
         clusterProperties: {
           l: ['+', ['get', 'l']],
@@ -456,6 +477,7 @@ export default function App() {
         source: 'energy',
         'source-layer': 'energy_certificates',
         minzoom: 6,
+        layout: { visibility: 'none' },
         paint: {
           'circle-radius': [
             'interpolate', ['linear'], ['zoom'],
@@ -503,6 +525,7 @@ export default function App() {
         source: 'pollution',
         'source-layer': 'pollution_sites',
         minzoom: 5,
+        layout: { visibility: 'none' },
         paint: {
           'circle-radius': [
             'interpolate', ['linear'], ['zoom'],
@@ -633,7 +656,8 @@ export default function App() {
     if (map.current.getLayer('pollution-dots')) {
       map.current.setLayoutProperty('pollution-dots', 'visibility', visibility(showPollution));
     }
-  }, [showParcels, showBuildings, showTransactions, showFloods, showEnergy, showPollution, isSatellite]);
+    updateMixMarkersRef.current();
+  }, [showParcels, showBuildings, showTransactions, showListings, showFloods, showEnergy, showPollution, isSatellite]);
 
   // Iegūst zemes vienības datus un darījumus no Go API
   const fetchParcelDetails = async (code: string) => {
@@ -904,16 +928,23 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* 2. NEKUSTAMĀ ĪPAŠUMA DARĪJUMI */}
+                {/* 2. SLUDINĀJUMI UN DARĪJUMI */}
                 <div className="lc-cat open" style={{ marginTop: 8 }}>
                   <div className="lc-cat-hdr">
-                    <div className="lc-tile" style={{ background: '#e0f2fe', color: '#0284c7' }}>💶</div>
-                    <span style={{ fontWeight: 700, fontSize: 13, flex: 1 }}>Darījumi (VZD)</span>
+                    <div className="lc-tile" style={{ background: '#eaf4ee', color: '#2f8a55' }}>🏷️</div>
+                    <span style={{ fontWeight: 700, fontSize: 13, flex: 1 }}>Sludinājumi un darījumi</span>
                   </div>
                   <div className="lc-layers">
+                    <div className={`lc-row ${showListings ? 'on' : ''}`} onClick={() => setShowListings(!showListings)}>
+                      <div className="lc-swatch" style={{ background: '#2f8a55' }} />
+                      <span className="lc-row-name">ss.com sludinājumi</span>
+                      <button className={`lc-tog ${showListings ? 'on' : ''}`} type="button" tabIndex={-1}>
+                        <div className="lc-tog-k" />
+                      </button>
+                    </div>
                     <div className={`lc-row ${showTransactions ? 'on' : ''}`} onClick={() => setShowTransactions(!showTransactions)}>
-                      <div className="lc-swatch" style={{ background: '#0284c7' }} />
-                      <span className="lc-row-name">Cenas un darījumu vēsture</span>
+                      <div className="lc-swatch" style={{ background: '#7b1fa2' }} />
+                      <span className="lc-row-name">VZD darījumu vēsture</span>
                       <button className={`lc-tog ${showTransactions ? 'on' : ''}`} type="button" tabIndex={-1}>
                         <div className="lc-tog-k" />
                       </button>
@@ -1172,16 +1203,6 @@ export default function App() {
         </div>
       )}
 
-      {/* Tālummaiņas paziņojums, kad attālināts ārpus detalizētajiem datiem */}
-      {currentZoom < 12.5 && (
-        <div
-          id="zoom-hint-toast"
-          onClick={() => map.current?.zoomIn()}
-          title="Noklikšķiniet, lai pietuvinātu karti"
-        >
-          🔍 Pietuviniet karti tuvāk, lai skatītu zemes vienību robežas un ēkas
-        </div>
-      )}
     </>
   );
 }
