@@ -203,7 +203,7 @@ export default function App() {
             18, 9,
           ],
           'circle-color': [
-            'interpolate', ['linear'], ['coalesce', ['get', 'price_per_m2'], 500],
+            'interpolate', ['linear'], ['to-number', ['get', 'price_per_m2'], 500],
             50, '#10b981',    // Zema cena / lauki
             500, '#0284c7',   // Vidēja cena
             1500, '#f59e0b',  // Premium
@@ -232,7 +232,7 @@ export default function App() {
         paint: {
           'circle-radius': ['interpolate', ['linear'], ['zoom'], 12, 3.5, 15, 6, 18, 9],
           'circle-color': [
-            'match', ['get', 'energy_class'],
+            'match', ['coalesce', ['get', 'energy_class'], ''],
             'A+', '#16a34a',
             'A', '#16a34a',
             'B', '#65a30d',
@@ -265,7 +265,7 @@ export default function App() {
         paint: {
           'circle-radius': ['interpolate', ['linear'], ['zoom'], 8, 4, 14, 7, 18, 10],
           'circle-color': [
-            'match', ['get', 'category'],
+            'match', ['coalesce', ['get', 'category'], ''],
             'Piesārņota vieta', '#dc2626',
             '#ca8a04',
           ],
