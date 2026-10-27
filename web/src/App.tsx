@@ -273,7 +273,7 @@ export default function App() {
       m.on('render', updateMixMarkers);
       m.on('moveend', updateMixMarkers);
       m.on('idle', updateMixMarkers);
-      m.on('data', (e) => {
+      m.on('data', (e: any) => {
         if (e.sourceId === 'mix-pts' && e.isSourceLoaded) {
           updateMixMarkers();
         }
