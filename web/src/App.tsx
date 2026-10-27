@@ -73,10 +73,10 @@ export default function App() {
   const [showPollution, setShowPollution] = useState(true);
   const [isSatellite, setIsSatellite] = useState(false);
 
-  // Slāņu panelis (atvērts/aizvērts) - desktopā pēc noklusējuma atvērts, mobilajā aizvērts
-  const [isLayersOpen, setIsLayersOpen] = useState(
-    typeof window !== 'undefined' ? window.innerWidth > 820 : true
-  );
+  // Slāņu panelis (atvērts/aizvērts) - pēc noklusējuma sakļauts kā kadastrakarte.lv
+  const [isLayersOpen, setIsLayersOpen] = useState(false);
+  const showTransactionsRef = useRef(showTransactions);
+  showTransactionsRef.current = showTransactions;
 
   const activeLayersCount =
     (showParcels ? 1 : 0) +
@@ -122,11 +122,13 @@ export default function App() {
   useEffect(() => {
     if (!mapContainer.current || map.current) return;
 
+    const hasHash = typeof window !== 'undefined' && window.location.hash.length > 3;
+
     const m = new maplibregl.Map({
       container: mapContainer.current,
       style: 'https://tiles.openfreemap.org/styles/positron',
-      center: [24.1048, 56.9495], // Vecrīga / Centrs
-      zoom: 16,
+      center: hasHash ? [24.1048, 56.9495] : [24.6, 56.85], // Latvijas pārskats pēc noklusējuma
+      zoom: hasHash ? 16 : 7.2,
       attributionControl: false,
       hash: true,
     });
@@ -134,6 +136,74 @@ export default function App() {
     const updateZoom = () => setCurrentZoom(m.getZoom());
     m.on('zoom', updateZoom);
     m.on('moveend', updateZoom);
+
+    // Seko līdzi klasteru HTML marķieriem
+    const mixMkMap: { [id: string]: maplibregl.Marker } = {};
+    let mixShownMap: { [id: string]: maplibregl.Marker } = {};
+
+    const updateMixMarkers = () => {
+      if (!m || !m.getSource('mix-pts')) return;
+      const zoom = m.getZoom();
+      const next: { [id: string]: maplibregl.Marker } = {};
+
+      if (zoom < 14 && showTransactionsRef.current) {
+        try {
+          const features = m.querySourceFeatures('mix-pts');
+          for (const f of features) {
+            if (!f.properties?.cluster) continue;
+            const id = String(f.properties.cluster_id);
+            if (next[id]) continue;
+
+            let marker = mixMkMap[id];
+            if (!marker) {
+              const l = Number(f.properties.l) || 0;
+              const t = Number(f.properties.t) || 0;
+              const n = l + t;
+              const fmt = (v: number) => v.toLocaleString('lv-LV');
+              const R = Math.round(Math.min(38, 16 + Math.sqrt(n) * 0.6));
+              const deg = n > 0 ? (360 * l / n).toFixed(1) : '0';
+
+              const el = document.createElement('div');
+              el.className = 'mix-mk';
+              el.style.cssText = `width:${2 * R}px;height:${2 * R}px;background:conic-gradient(#2f8a55 0 ${deg}deg,#7b1fa2 ${deg}deg 360deg);font-size:${R > 26 ? 12 : 10.5}px;`;
+              el.title = `${fmt(l)} sludinājumi · ${fmt(t)} objekti ar darījumu`;
+              el.innerHTML = `<div>${l ? `<span style="color:#2f8a55">${fmt(l)}</span>` : ''}${t ? `<span style="color:#7b1fa2">${fmt(t)}</span>` : ''}</div>`;
+
+              el.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const src = m.getSource('mix-pts') as maplibregl.GeoJSONSource;
+                src.getClusterExpansionZoom(Number(id)).then((targetZoom) => {
+                  const coords = (f.geometry as GeoJSON.Point).coordinates;
+                  m.easeTo({
+                    center: [coords[0], coords[1]],
+                    zoom: Math.min(Math.max(targetZoom, m.getZoom() + 1), 14.5),
+                    duration: 600,
+                  });
+                }).catch(() => {});
+              });
+
+              const coords = (f.geometry as GeoJSON.Point).coordinates;
+              marker = new maplibregl.Marker({ element: el }).setLngLat([coords[0], coords[1]]);
+              mixMkMap[id] = marker;
+            }
+
+            next[id] = marker;
+            if (!mixShownMap[id]) {
+              marker.addTo(m);
+            }
+          }
+        } catch (e) {
+          // Source not ready yet
+        }
+      }
+
+      for (const id in mixShownMap) {
+        if (!next[id]) {
+          mixShownMap[id].remove();
+        }
+      }
+      mixShownMap = next;
+    };
 
     m.on('load', () => {
       updateZoom();
@@ -151,6 +221,75 @@ export default function App() {
         source: 'esri-satellite',
         layout: { visibility: 'none' },
       });
+
+      // 0.1 KOPĪGIE KLASTERI (z < 14, identiski kā kadastrakarte.lv)
+      m.addSource('mix-pts', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+        cluster: true,
+        clusterRadius: 75,
+        clusterMaxZoom: 13,
+        clusterProperties: {
+          l: ['+', ['get', 'l']],
+          t: ['+', ['get', 't']],
+        },
+      });
+
+      m.addLayer({
+        id: 'mix-one',
+        type: 'circle',
+        source: 'mix-pts',
+        maxzoom: 14,
+        filter: ['!', ['has', 'point_count']],
+        paint: {
+          'circle-color': ['case', ['==', ['get', 'l'], 1], '#2f8a55', '#7b1fa2'],
+          'circle-radius': 4.5,
+          'circle-stroke-color': '#fff',
+          'circle-stroke-width': 1.5,
+        },
+      });
+
+      m.on('render', updateMixMarkers);
+      m.on('moveend', updateMixMarkers);
+
+      // Ielādējam klasteru punktus (darījumus un sludinājumus)
+      Promise.all([
+        fetch('/data/listings-pts.json').then((r) => r.json()).catch(() => []),
+        fetch('/data/tx-pts.json').then((r) => r.json()).catch(() => []),
+      ]).then(([listingsData, txData]) => {
+        const feats: any[] = [];
+        if (Array.isArray(listingsData)) {
+          for (const item of listingsData) {
+            feats.push({
+              type: 'Feature',
+              geometry: { type: 'Point', coordinates: [item[0], item[1]] },
+              properties: { l: 1, t: 0 },
+            });
+          }
+        }
+        if (Array.isArray(txData) && txData.length >= 3) {
+          const n = Math.floor(txData.length / 3);
+          let x = 0;
+          let y = 0;
+          for (let i = 0; i < n; i++) {
+            x += txData[3 * i];
+            y += txData[3 * i + 1];
+            feats.push({
+              type: 'Feature',
+              geometry: { type: 'Point', coordinates: [x / 1e4, y / 1e4] },
+              properties: { l: 0, t: 1 },
+            });
+          }
+        }
+
+        const src = m.getSource('mix-pts') as maplibregl.GeoJSONSource | undefined;
+        if (src) {
+          src.setData({
+            type: 'FeatureCollection',
+            features: feats,
+          });
+        }
+      }).catch((e) => console.error('Error loading points:', e));
 
       // 1. ZEMES VIENĪBAS (Parcels) - detalizētās robežas no z12.5 (kā kadastrakarte.lv)
       m.addSource('parcels', {
@@ -239,11 +378,11 @@ export default function App() {
         },
       });
 
-      // 3. DARĪJUMI (Transactions)
+      // 3. DARĪJUMI (Transactions) - detalizētie punkti no z14 (kā kadastrakarte.lv)
       m.addSource('transactions', {
         type: 'vector',
         tiles: [`${TILES_BASE}/transactions/{z}/{x}/{y}`],
-        minzoom: 6,
+        minzoom: 13,
         maxzoom: 22,
       });
 
@@ -252,15 +391,13 @@ export default function App() {
         type: 'circle',
         source: 'transactions',
         'source-layer': 'transactions',
-        minzoom: 6,
+        minzoom: 14,
         paint: {
           'circle-radius': [
             'interpolate', ['linear'], ['zoom'],
-            6, 1.0,
-            8, 1.8,
-            10, 2.8,
-            13, 4.5,
+            14, 4.5,
             16, 7.5,
+            18, 9.0,
           ],
           'circle-color': [
             'interpolate', ['linear'], ['to-number', ['get', 'price_per_m2'], 500],
@@ -269,13 +406,7 @@ export default function App() {
             1500, '#f59e0b',  // Premium
             3000, '#ef4444',  // Ekskluzīvs
           ],
-          'circle-stroke-width': [
-            'interpolate', ['linear'], ['zoom'],
-            6, 0,
-            9, 0.5,
-            12, 1.2,
-            15, 1.8,
-          ],
+          'circle-stroke-width': 1.8,
           'circle-stroke-color': '#ffffff',
           'circle-opacity': 0.85,
         },
@@ -554,35 +685,39 @@ export default function App() {
 
   return (
     <>
-      {/* 1. TOP NAVBAR (Kā oriģinālajā kadastrakarte.lv) */}
+      {/* 1. TOP NAVBAR (Identisks ar kadastrakarte.lv) */}
       <header id="navbar">
         <div className="nav-inner">
           <a href="/" className="nav-logo">
             <div className="nav-logo-icon">
-              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#7a1f16" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/>
-                <circle cx="12" cy="9" r="2.5" fill="#7a1f16"/>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+                <polyline points="9 22 9 12 15 12 15 22"/>
               </svg>
             </div>
             <span className="nav-logo-text">Kadastra Karte</span>
           </a>
 
           <nav className="nav-links">
-            <a href="/" className="active">Īpašumu karte</a>
-            <a href="#darijumi">Darījumu statistika</a>
-            <a href="#par">Par projektu</a>
+            <a href="#sakums">Sākums</a>
+            <a href="/" className="active">Karte</a>
+            <a href="#meklet">Meklēt</a>
+            <a href="#cik-maksa" style={{ position: 'relative' }}>
+              <span className="nav-badge-jaunums">JAUNUMS</span>
+              Cik maksā
+            </a>
+            <a href="#pazinojumi">Paziņojumi</a>
+            <a href="#kontakti">Kontakti</a>
           </nav>
 
           <div className="nav-actions">
-            <button
-              type="button"
-              className={`nav-btn outline ${isSatellite ? 'active-sat' : ''}`}
-              onClick={() => setIsSatellite(!isSatellite)}
-            >
-              🛰️ {isSatellite ? 'Pamatkarte' : 'Aerofoto'}
+            <button type="button" className="nav-login-btn">
+              Ielogoties
             </button>
             <div className="nav-lang">
               <button type="button" className="nav-lang-btn active">LV</button>
+              <button type="button" className="nav-lang-btn">EN</button>
+              <button type="button" className="nav-lang-btn">RU</button>
             </div>
           </div>
         </div>
@@ -663,14 +798,21 @@ export default function App() {
           {!isLayersOpen ? (
             /* SAKĻAUTĀ KARTIŅA */
             <div id="lc-collapsed" onClick={() => setIsLayersOpen(true)}>
-              <div className={activeLayersCount > 0 ? "lc-badge-active" : "lc-badge-empty"}>
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={activeLayersCount > 0 ? "#fff" : "#6E6458"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <div className="lc-badge-active">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
                 </svg>
               </div>
               <div id="lc-info">
-                <div id="lc-title">Slāņi</div>
-                <div id="lc-sub">{activeLayersCount} aktīvi slāņi</div>
+                <div id="lc-title">{activeLayersCount} no 38 slāņiem aktīvi</div>
+                <div id="lc-sub" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <span style={{ width: 8, height: 8, borderRadius: 2, background: '#1b6b3a' }} />
+                  <span style={{ width: 8, height: 8, borderRadius: 2, background: '#2f8a55' }} />
+                  <span style={{ width: 8, height: 8, borderRadius: 2, background: '#0284c7' }} />
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 160 }}>
+                    ss.com sludinājumi, pp....
+                  </span>
+                </div>
               </div>
               <div id="lc-chevron-r">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8A7F72" strokeWidth="2.5">

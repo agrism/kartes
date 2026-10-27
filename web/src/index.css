@@ -72,8 +72,10 @@ html, body, #root {
 }
 
 .nav-logo-icon {
-  width: 34px;
-  height: 34px;
+  width: 32px;
+  height: 32px;
+  background: #7a1f16;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -81,8 +83,8 @@ html, body, #root {
 }
 
 .nav-logo-text {
-  font: 700 16px/1 'Hanken Grotesk', -apple-system, sans-serif;
-  letter-spacing: -.01em;
+  font: 800 17px/1 'Hanken Grotesk', -apple-system, sans-serif;
+  letter-spacing: -.02em;
   color: #1a1209;
 }
 
@@ -97,50 +99,59 @@ html, body, #root {
   font: 500 14px/1 'Hanken Grotesk', -apple-system, sans-serif;
   color: rgba(26, 18, 9, 0.7);
   text-decoration: none;
-  padding: 7px 11px;
-  border-radius: 8px;
+  padding: 8px 12px;
+  border-radius: 18px;
   transition: background 0.15s, color 0.15s;
+  position: relative;
 }
 
-.nav-links a:hover,
-.nav-links a.active {
-  background: rgba(122, 31, 22, 0.08);
+.nav-links a:hover {
+  background: rgba(122, 31, 22, 0.06);
   color: #7a1f16;
-  font-weight: 600;
+}
+
+.nav-links a.active {
+  background: #f5efe4;
+  color: #1a1209;
+  font-weight: 700;
+}
+
+.nav-badge-jaunums {
+  position: absolute;
+  top: -7px;
+  right: 0px;
+  background: #16a34a;
+  color: #fff;
+  font-size: 8px;
+  font-weight: 800;
+  padding: 1.5px 4px;
+  border-radius: 3px;
+  letter-spacing: 0.4px;
+  line-height: 1;
 }
 
 .nav-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
   flex-shrink: 0;
   margin-left: auto;
 }
 
-.nav-btn {
-  font: 500 13.5px/1 'Hanken Grotesk', -apple-system, sans-serif;
-  text-decoration: none;
-  padding: 8px 13px;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.15s;
-  border: 1px solid #e4d9c1;
-  background: rgba(253, 250, 242, 0.6);
-  color: #1a1209;
-  display: inline-flex;
-  align-items: center;
-  white-space: nowrap;
-}
-
-.nav-btn:hover {
-  border-color: #7a1f16;
-  color: #7a1f16;
-}
-
-.nav-btn.active-sat {
-  background: #0f172a;
+.nav-login-btn {
+  background: #7a1f16;
   color: #ffffff;
-  border-color: #0f172a;
+  border: none;
+  border-radius: 20px;
+  padding: 7px 16px;
+  font: 700 13.5px/1 'Hanken Grotesk', -apple-system, sans-serif;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+
+.nav-login-btn:hover {
+  background: #631811;
+  transform: translateY(-1px);
 }
 
 .nav-lang {
@@ -1061,5 +1072,45 @@ body:has(.panel) #zoom-ctl {
     opacity: 1;
     transform: translate(-50%, 0);
   }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   KLASTERU MARĶIERI (.mix-mk) — kā kadastrakarte.lv
+   Violeti/zaļš gredzens ar balto centru un abiem skaitļiem
+   ═══════════════════════════════════════════════════════════════ */
+.mix-mk {
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 0 0 1.5px #fff, 0 1px 4px rgba(0, 0, 0, 0.18);
+  transition: transform 0.15s ease;
+  user-select: none;
+}
+
+.mix-mk:hover {
+  transform: scale(1.08);
+  z-index: 50 !important;
+}
+
+.mix-mk > div {
+  width: calc(100% - 10px);
+  height: calc(100% - 10px);
+  border-radius: 50%;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Hanken Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-weight: 700;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  box-shadow: inset 0 0 2px rgba(0, 0, 0, 0.08);
+}
+
+.mix-mk span {
+  display: block;
 }
 
