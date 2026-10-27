@@ -36,8 +36,9 @@ services:
       db:
         condition: service_healthy
 
-  # 3. Go Backend API: Zibenīgs REST API ar pgx/v5 pieslēgumu PostGIS (viss būvējas Docker iekšienē)
+  # 3. Go Backend API: Zibenīgs REST API ar pgx/v5 pieslēgumu PostGIS
   api:
+    image: ghcr.io/agrism/kartes-api:latest
     build:
       context: ./api
       dockerfile: Dockerfile
@@ -60,21 +61,16 @@ services:
     ports:
       - "${CACHE_PORT:-6379}:6379"
 
-  # 5. Frontend UI: React + Vite + MapLibre GL JS (HMR caur Docker sējumu)
+  # 5. Frontend UI: React + Vite + MapLibre GL JS (Statisks Nginx Alpine)
   web:
+    image: ghcr.io/agrism/kartes-web:latest
     build:
       context: ./web
       dockerfile: Dockerfile
     container_name: kartes-web
     restart: unless-stopped
     ports:
-      - "${WEB_PORT:-5180}:5173"
-    volumes:
-      - ./web:/app
-      - /app/node_modules
-    environment:
-      - VITE_API_URL=http://localhost:${API_PORT:-8090}
-      - VITE_TILES_URL=http://localhost:${MARTIN_PORT:-3000}
+      - "${WEB_PORT:-5180}:80"
     depends_on:
       - api
       - martin
