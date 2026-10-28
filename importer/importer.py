@@ -8,6 +8,7 @@ import os
 import sys
 import io
 import csv
+import json
 import zipfile
 import argparse
 import requests
@@ -50,131 +51,263 @@ def download_file(url: str, filename: str) -> str:
     print(f"✅ Lejupielādēts veiksmīgi: {dest_path}")
     return dest_path
 
-def import_cadastre_riga(limit: int = 0):
-    """Importē Rīgas kadastra zemes vienības un būves ar streaming COPY."""
-    print("\n--- 🗺️ RĪGAS KADASTRA IMPORTS (ZEMES VIENĪBAS & BŪVES) ---")
-    zip_path = download_file(URLS["cadastre_riga"], "0001000_kk_shp.zip")
+def get_cadastre_resources() -> list[dict]:
+    """Iegūst visu 42 Latvijas pašvaldību kadastra datu kopas no data.gov.lv CKAN API ar lokālu fallback."""
+    api_url = "https://data.gov.lv/dati/api/3/action/package_show?id=b28f0eed-73b0-4e44-94e7-b04b11bf0b69"
+    try:
+        r = requests.get(api_url, timeout=15)
+        if r.status_code == 200:
+            resources = r.json().get("result", {}).get("resources", [])
+            shp_res = [res for res in resources if res.get("url", "").endswith(".zip")]
+            if len(shp_res) >= 40:
+                return [{"name": res.get("name"), "url": res.get("url"), "size": res.get("size", 0)} for res in shp_res]
+    except Exception as e:
+        print(f"⚠️ Neizdevās nolasīt CKAN API ({e}), izmanto lokālo resursu sarakstu.")
 
-    with psycopg.connect(DB_URL) as conn:
-        with conn.cursor() as cur:
-            with zipfile.ZipFile(zip_path, 'r') as zf:
-                # 1. Zemes vienības (KKParcel)
-                parcel_shps = [n for n in zf.namelist() if n.endswith("KKParcel.shp")]
-                print(f"📁 Apstrādā {len(parcel_shps)} zemes vienību shapefiles...")
+    local_json = os.path.join(os.path.dirname(__file__), "cadastre_resources.json")
+    if os.path.exists(local_json):
+        with open(local_json, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return []
 
-                cur.execute("""
-                    CREATE TEMP TABLE tmp_parcels (
-                        code varchar(11),
-                        area_m2 numeric(14, 2),
-                        wkb_hex text
-                    ) ON COMMIT DROP;
-                """)
+def init_cadastre_tracking(conn):
+    """Izveido reģistru ielādētajām teritorijām drošai atsākšanai (resumability)."""
+    with conn.cursor() as cur:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS public.imported_cadastre_territories (
+                territory_code varchar(20) PRIMARY KEY,
+                name varchar(100),
+                imported_at timestamptz DEFAULT CURRENT_TIMESTAMP,
+                parcels_count integer DEFAULT 0,
+                buildings_count integer DEFAULT 0
+            );
+        """)
+        # Ja parcels tabulā jau ir Rīgas dati, atzīmējam Rīgu kā ielādētu
+        cur.execute("SELECT count(*) FROM public.parcels WHERE code LIKE '0100%';")
+        riga_cnt = cur.fetchone()[0]
+        if riga_cnt > 30000:
+            cur.execute("""
+                INSERT INTO public.imported_cadastre_territories (territory_code, name, parcels_count, buildings_count)
+                VALUES ('0001000', '1. Rīga', %s, (SELECT count(*) FROM public.buildings WHERE parcel_code LIKE '0100%%'))
+                ON CONFLICT (territory_code) DO NOTHING;
+            """, (riga_cnt,))
+        conn.commit()
 
-                total_parcels = 0
-                with cur.copy("COPY tmp_parcels (code, area_m2, wkb_hex) FROM STDIN") as copy:
-                    for shp_name in tqdm(parcel_shps, desc="Zemes vienības (SHP lasīšana)"):
-                        base = shp_name[:-4]
-                        try:
-                            shp_io = io.BytesIO(zf.read(base + ".shp"))
-                            shx_io = io.BytesIO(zf.read(base + ".shx"))
-                            dbf_io = io.BytesIO(zf.read(base + ".dbf"))
+def process_cadastre_zip(conn, zip_path: str, region_name: str, limit: int = 0) -> tuple[int, int]:
+    """Apstrādā vienu kadastra zip arhīvu: nolasa zemes vienības un būvju kontūras ar streaming COPY."""
+    with conn.cursor() as cur:
+        with zipfile.ZipFile(zip_path, 'r') as zf:
+            # 1. Zemes vienības (KKParcel)
+            parcel_shps = [n for n in zf.namelist() if n.endswith("KKParcel.shp")]
+            print(f"📁 [{region_name}] Apstrādā {len(parcel_shps)} zemes vienību shapefiles...")
 
-                            sf = shapefile.Reader(shp=shp_io, shx=shx_io, dbf=dbf_io, encoding='iso-8859-4')
-                            for sr in sf.shapeRecords():
-                                code = str(sr.record[0]).strip()
-                                if not code:
-                                    continue
+            cur.execute("""
+                CREATE TEMP TABLE tmp_parcels (
+                    code varchar(11),
+                    area_m2 numeric(14, 2),
+                    wkb_hex text
+                ) ON COMMIT DROP;
+            """)
 
-                                s = sr.shape
-                                if len(s.points) == 0:
-                                    continue
+            total_parcels = 0
+            with cur.copy("COPY tmp_parcels (code, area_m2, wkb_hex) FROM STDIN") as copy:
+                for shp_name in tqdm(parcel_shps, desc=f"{region_name} - Zemes vienības"):
+                    base = shp_name[:-4]
+                    try:
+                        shp_io = io.BytesIO(zf.read(base + ".shp"))
+                        shx_io = io.BytesIO(zf.read(base + ".shx"))
+                        dbf_io = io.BytesIO(zf.read(base + ".dbf"))
 
-                                poly_geom = shape(s.__geo_interface__)
-                                wkb_hex = poly_geom.wkb_hex
-                                area = round(float(poly_geom.area), 2)
+                        sf = shapefile.Reader(shp=shp_io, shx=shx_io, dbf=dbf_io, encoding='iso-8859-4')
+                        for sr in sf.shapeRecords():
+                            code = str(sr.record[0]).strip()
+                            if not code:
+                                continue
 
-                                copy.write_row((code, area, wkb_hex))
-                                total_parcels += 1
+                            s = sr.shape
+                            if len(s.points) == 0:
+                                continue
 
-                                if limit > 0 and total_parcels >= limit:
-                                    break
+                            poly_geom = shape(s.__geo_interface__)
+                            wkb_hex = poly_geom.wkb_hex
+                            area = round(float(poly_geom.area), 2)
+
+                            copy.write_row((code, area, wkb_hex))
+                            total_parcels += 1
+
                             if limit > 0 and total_parcels >= limit:
                                 break
-                        except Exception:
-                            continue
+                        if limit > 0 and total_parcels >= limit:
+                            break
+                    except Exception:
+                        continue
 
-                print(f"🚀 Ievieto {total_parcels} zemes vienības PostGIS ar EPSG:3059 -> EPSG:3857 transformāciju...")
-                cur.execute("""
-                    INSERT INTO public.parcels (code, area_m2, geom)
-                    SELECT 
-                        code, 
-                        area_m2, 
-                        ST_Multi(ST_Transform(ST_SetSRID(ST_GeomFromWKB(decode(wkb_hex, 'hex')), 3059), 3857))
-                    FROM tmp_parcels
-                    ON CONFLICT (code) DO UPDATE
-                    SET area_m2 = EXCLUDED.area_m2, geom = EXCLUDED.geom;
-                """)
-                conn.commit()
-                print(f"✨ Veiksmīgi saglabātas {total_parcels} zemes vienības!")
+            print(f"🚀 [{region_name}] Ievieto {total_parcels} zemes vienības PostGIS (EPSG:3059 -> 3857)...")
+            cur.execute("""
+                INSERT INTO public.parcels (code, area_m2, geom)
+                SELECT DISTINCT ON (code)
+                    code, 
+                    area_m2, 
+                    ST_Multi(ST_CollectionExtract(ST_MakeValid(ST_Transform(ST_SetSRID(ST_GeomFromWKB(decode(wkb_hex, 'hex')), 3059), 3857)), 3))
+                FROM tmp_parcels
+                WHERE code IS NOT NULL AND code != ''
+                ON CONFLICT (code) DO UPDATE
+                SET area_m2 = EXCLUDED.area_m2, geom = EXCLUDED.geom;
+            """)
+            conn.commit()
 
-                # 2. Būvju kontūras (KKBuilding)
-                building_shps = [n for n in zf.namelist() if n.endswith("KKBuilding.shp")]
-                print(f"\n📁 Apstrādā {len(building_shps)} būvju shapefiles...")
+            # 2. Būvju kontūras (KKBuilding)
+            building_shps = [n for n in zf.namelist() if n.endswith("KKBuilding.shp")]
+            print(f"📁 [{region_name}] Apstrādā {len(building_shps)} būvju shapefiles...")
 
-                cur.execute("""
-                    CREATE TEMP TABLE tmp_buildings (
-                        code varchar(14),
-                        parcel_code varchar(11),
-                        wkb_hex text
-                    ) ON COMMIT DROP;
-                """)
+            cur.execute("""
+                CREATE TEMP TABLE tmp_buildings (
+                    code varchar(14),
+                    parcel_code varchar(11),
+                    wkb_hex text
+                ) ON COMMIT DROP;
+            """)
 
-                total_buildings = 0
-                with cur.copy("COPY tmp_buildings (code, parcel_code, wkb_hex) FROM STDIN") as copy:
-                    for shp_name in tqdm(building_shps, desc="Būvju kontūras (SHP lasīšana)"):
-                        base = shp_name[:-4]
-                        try:
-                            shp_io = io.BytesIO(zf.read(base + ".shp"))
-                            shx_io = io.BytesIO(zf.read(base + ".shx"))
-                            dbf_io = io.BytesIO(zf.read(base + ".dbf"))
+            total_buildings = 0
+            with cur.copy("COPY tmp_buildings (code, parcel_code, wkb_hex) FROM STDIN") as copy:
+                for shp_name in tqdm(building_shps, desc=f"{region_name} - Būves"):
+                    base = shp_name[:-4]
+                    try:
+                        shp_io = io.BytesIO(zf.read(base + ".shp"))
+                        shx_io = io.BytesIO(zf.read(base + ".shx"))
+                        dbf_io = io.BytesIO(zf.read(base + ".dbf"))
 
-                            sf = shapefile.Reader(shp=shp_io, shx=shx_io, dbf=dbf_io, encoding='iso-8859-4')
-                            for sr in sf.shapeRecords():
-                                code = str(sr.record[0]).strip()
-                                parcel_code = str(sr.record[2]).strip() if len(sr.record) > 2 and sr.record[2] else None
-                                if not code:
-                                    continue
+                        sf = shapefile.Reader(shp=shp_io, shx=shx_io, dbf=dbf_io, encoding='iso-8859-4')
+                        for sr in sf.shapeRecords():
+                            code = str(sr.record[0]).strip()
+                            parcel_code = str(sr.record[2]).strip() if len(sr.record) > 2 and sr.record[2] else None
+                            if not code:
+                                continue
 
-                                s = sr.shape
-                                if len(s.points) == 0:
-                                    continue
+                            s = sr.shape
+                            if len(s.points) == 0:
+                                continue
 
-                                poly_geom = shape(s.__geo_interface__)
-                                wkb_hex = poly_geom.wkb_hex
+                            poly_geom = shape(s.__geo_interface__)
+                            wkb_hex = poly_geom.wkb_hex
 
-                                copy.write_row((code, parcel_code, wkb_hex))
-                                total_buildings += 1
+                            copy.write_row((code, parcel_code, wkb_hex))
+                            total_buildings += 1
 
-                                if limit > 0 and total_buildings >= limit:
-                                    break
                             if limit > 0 and total_buildings >= limit:
                                 break
-                        except Exception:
-                            continue
+                        if limit > 0 and total_buildings >= limit:
+                            break
+                    except Exception:
+                        continue
 
-                print(f"🚀 Ievieto {total_buildings} būves PostGIS ar EPSG:3059 -> EPSG:3857 transformāciju...")
-                cur.execute("""
-                    INSERT INTO public.buildings (code, parcel_code, geom)
-                    SELECT 
-                        code, 
-                        parcel_code, 
-                        ST_Multi(ST_Transform(ST_SetSRID(ST_GeomFromWKB(decode(wkb_hex, 'hex')), 3059), 3857))
-                    FROM tmp_buildings
-                    ON CONFLICT (code) DO UPDATE
-                    SET parcel_code = EXCLUDED.parcel_code, geom = EXCLUDED.geom;
-                """)
-                conn.commit()
-                print(f"✨ Veiksmīgi saglabātas {total_buildings} būvju kontūras!")
+            print(f"🚀 [{region_name}] Ievieto {total_buildings} būves PostGIS (EPSG:3059 -> 3857)...")
+            cur.execute("""
+                INSERT INTO public.buildings (code, parcel_code, geom)
+                SELECT DISTINCT ON (code)
+                    code, 
+                    parcel_code, 
+                    ST_Multi(ST_CollectionExtract(ST_MakeValid(ST_Transform(ST_SetSRID(ST_GeomFromWKB(decode(wkb_hex, 'hex')), 3059), 3857)), 3))
+                FROM tmp_buildings
+                WHERE code IS NOT NULL AND code != ''
+                ON CONFLICT (code) DO UPDATE
+                SET parcel_code = EXCLUDED.parcel_code, geom = EXCLUDED.geom;
+            """)
+            conn.commit()
+
+            print(f"✨ [{region_name}] Veiksmīgi saglabātas {total_parcels} zemes vienības un {total_buildings} būves!")
+            return total_parcels, total_buildings
+
+def import_cadastre_riga(limit: int = 0):
+    """Importē Rīgas kadastra zemes vienības un būves."""
+    import_cadastre_all_latvia(limit=limit, region_filter="0001000", force=True)
+
+def import_cadastre_all_latvia(limit: int = 0, region_filter: str = None, resume_from: str = None, keep_zips: bool = False, force: bool = False):
+    """Secīgi lejupielādē un ielādē visas Latvijas pašvaldību kadastra datus (42 novadi/pilsētas)."""
+    resources = get_cadastre_resources()
+    if not resources:
+        print("❌ Neizdevās iegūt kadastra datu kopu sarakstu!")
+        return
+
+    print(f"\n🗺️ Sākam kadastra datu ielādi ({len(resources)} reģioni sarakstā)...")
+
+    with psycopg.connect(DB_URL) as conn:
+        init_cadastre_tracking(conn)
+
+        imported_codes = set()
+        if not force:
+            with conn.cursor() as cur:
+                cur.execute("SELECT territory_code FROM public.imported_cadastre_territories;")
+                imported_codes = {row[0] for row in cur.fetchall()}
+
+        resuming = resume_from is None
+        total_p = 0
+        total_b = 0
+
+        for i, res in enumerate(resources, 1):
+            name = res["name"]
+            url = res["url"]
+            filename = url.split("/")[-1]
+            t_code = filename.split("_")[0]
+
+            if region_filter:
+                rf = region_filter.lower()
+                if rf not in name.lower() and rf not in t_code.lower() and rf not in filename.lower():
+                    continue
+
+            if not resuming:
+                if resume_from.lower() in name.lower() or resume_from.lower() in t_code.lower():
+                    resuming = True
+                else:
+                    print(f"⏭️ Izlaiž reģionu līdz {resume_from}: {name}")
+                    continue
+
+            if not force and t_code in imported_codes:
+                print(f"⏭️ [{i}/{len(resources)}] Reģions jau ielādēts: {name} ({t_code})")
+                continue
+
+            print(f"\n=======================================================")
+            print(f"📍 [{i}/{len(resources)}] APSTRĀDĀ: {name} (Kods: {t_code})")
+            print(f"=======================================================")
+
+            zip_path = download_file(url, filename)
+            try:
+                p_cnt, b_cnt = process_cadastre_zip(conn, zip_path, name, limit=limit)
+                total_p += p_cnt
+                total_b += b_cnt
+
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        INSERT INTO public.imported_cadastre_territories (territory_code, name, imported_at, parcels_count, buildings_count)
+                        VALUES (%s, %s, NOW(), %s, %s)
+                        ON CONFLICT (territory_code) DO UPDATE
+                        SET imported_at = NOW(), parcels_count = EXCLUDED.parcels_count, buildings_count = EXCLUDED.buildings_count;
+                    """, (t_code, name, p_cnt, b_cnt))
+                    conn.commit()
+
+            finally:
+                if not keep_zips and os.path.exists(zip_path):
+                    try:
+                        os.remove(zip_path)
+                        print(f"🧹 Dzēsts pagaidu fails: {filename} (atbrīvota vieta diskā)")
+                    except Exception:
+                        pass
+
+        print(f"\n🎉 Visi atlasītie reģioni apstrādāti! Ielādētas {total_p} zemes vienības un {total_b} būves.")
+
+    vacuum_cadastre_tables()
+
+def vacuum_cadastre_tables():
+    """Izpilda VACUUM ANALYZE kadastra tabulām maksimālai Martin flīžu veiktspējai."""
+    print("\n🧹 Izpilda VACUUM ANALYZE public.parcels un public.buildings...")
+    try:
+        with psycopg.connect(DB_URL, autocommit=True) as conn:
+            with conn.cursor() as cur:
+                cur.execute("VACUUM ANALYZE public.parcels;")
+                cur.execute("VACUUM ANALYZE public.buildings;")
+        print("✅ VACUUM ANALYZE veiksmīgi pabeigts!")
+    except Exception as e:
+        print(f"⚠️ VACUUM brīdinājums: {e}")
 
 import math
 
@@ -548,21 +681,34 @@ def import_pollution_sites(limit: int = 0):
 
 def main():
     parser = argparse.ArgumentParser(description="VZD Atvērto Datu Ielādes Rīks (High Performance)")
+    parser.add_argument("--cadastre-all", action="store_true", help="Ielādēt visas Latvijas kadastra robežas un būves (42 pašvaldības)")
+    parser.add_argument("--cadastre-region", type=str, help="Ielādēt konkrētas pašvaldības kadastru (nosaukums vai kods, piemēram, 'Jurmala' vai '0004000')")
+    parser.add_argument("--resume-from", type=str, help="Atsākt kadastra ielādi no konkrēta reģiona")
+    parser.add_argument("--keep-zips", action="store_true", help="Saglabāt lejupielādētos zip failus pēc apstrādes")
+    parser.add_argument("--force", action="store_true", help="Pārlādēt reģionus pat ja tie jau ir ielādēti")
+    parser.add_argument("--vacuum", action="store_true", help="Izpildīt VACUUM ANALYZE kadastra tabulām")
     parser.add_argument("--transactions", action="store_true", help="Ielādēt nekustamo īpašumu darījumus (NĪTB)")
     parser.add_argument("--cadastre-riga", action="store_true", help="Ielādēt Rīgas kadastra robežas un būves")
     parser.add_argument("--addresses", action="store_true", help="Ielādēt Valsts adrešu reģistru")
     parser.add_argument("--energy", action="store_true", help="Ielādēt BVKB ēku energosertifikātus")
     parser.add_argument("--pollution", action="store_true", help="Ielādēt VVD piesārņotās un potenciāli piesārņotās vietas")
-    parser.add_argument("--all", action="store_true", help="Ielādēt visus pieejamos datus")
+    parser.add_argument("--all", action="store_true", help="Ielādēt visus pieejamos datus (ieskaitot visu LV kadastru)")
     parser.add_argument("--limit", type=int, default=0, help="Ierobežot ierakstu skaitu (0 = bez limita)")
 
     args = parser.parse_args()
 
-    if not any([args.transactions, args.cadastre_riga, args.addresses, args.energy, args.pollution, args.all]):
+    if not any([args.cadastre_all, args.cadastre_region, args.resume_from, args.vacuum, args.transactions, args.cadastre_riga, args.addresses, args.energy, args.pollution, args.all]):
         parser.print_help()
         sys.exit(0)
 
-    if args.all or args.cadastre_riga:
+    if args.vacuum:
+        vacuum_cadastre_tables()
+
+    if args.all or args.cadastre_all:
+        import_cadastre_all_latvia(limit=args.limit, resume_from=args.resume_from, keep_zips=args.keep_zips, force=args.force)
+    elif args.cadastre_region:
+        import_cadastre_all_latvia(limit=args.limit, region_filter=args.cadastre_region, keep_zips=args.keep_zips, force=args.force)
+    elif args.cadastre_riga:
         import_cadastre_riga(limit=args.limit)
 
     if args.all or args.addresses:

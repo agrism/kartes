@@ -1,0 +1,212 @@
+[
+  {
+    "name": "1. Rīga",
+    "url": "https://data.gov.lv/dati/dataset/b28f0eed-73b0-4e44-94e7-b04b11bf0b69/resource/bf88b763-98b8-445d-a51f-b76f45c362c5/download/0001000_kk_shp.zip",
+    "size": 21827857
+  },
+  {
+    "name": "2. Daugavpils",
+    "url": "https://data.gov.lv/dati/dataset/b28f0eed-73b0-4e44-94e7-b04b11bf0b69/resource/a55953fb-b4ce-4c10-aa0d-c89119b3428f/download/0002000_kk_shp.zip",
+    "size": 8300480
+  },
+  {
+    "name": "3. Jelgava",
+    "url": "https://data.gov.lv/dati/dataset/b28f0eed-73b0-4e44-94e7-b04b11bf0b69/resource/269dadbd-f504-4bb5-98f4-7f4c01f773bc/download/0003000_kk_shp.zip",
+    "size": 4522342
+  },
+  {
+    "name": "4. Jūrmala",
+    "url": "https://data.gov.lv/dati/dataset/b28f0eed-73b0-4e44-94e7-b04b11bf0b69/resource/0d6779e2-f4ba-4a89-849c-0c2aee99b43c/download/0004000_kk_shp.zip",
+    "size": 5418876
+  },
+  {
+    "name": "5. Liepāja",
+    "url": "https://data.gov.lv/dati/dataset/b28f0eed-73b0-4e44-94e7-b04b11bf0b69/resource/4dda3e6e-41c7-4e72-a485-80701a153e0d/download/0005000_kk_shp.zip",
+    "size": 3164395
+  },
+  {
+    "name": "6. Rēzekne",
+    "url": "https://data.gov.lv/dati/dataset/b28f0eed-73b0-4e44-94e7-b04b11bf0b69/resource/4e05412d-57d8-48cc-a79a-a9cab548c06e/download/0006000_kk_shp.zip",
+    "size": 2628950
+  },
+  {
+    "name": "7. Ventspils",
+    "url": "https://data.gov.lv/dati/dataset/b28f0eed-73b0-4e44-94e7-b04b11bf0b69/resource/e0cdfc6c-836f-4263-99f6-a65a1a0275cd/download/0007000_kk_shp.zip",
+    "size": 3528113
+  },
+  {
+    "name": "8. Aizkraukles novads",
+    "url": "https://data.gov.lv/dati/dataset/b28f0eed-73b0-4e44-94e7-b04b11bf0b69/resource/4535656c-6ca0-4207-9c9b-d36e1132dcae/download/0020000_kk_shp.zip",
+    "size": 15692201
+  },
+  {
+    "name": "9. Alūksnes novads",
+    "url": "https://data.gov.lv/dati/dataset/b28f0eed-73b0-4e44-94e7-b04b11bf0b69/resource/6292b3e2-643d-41a3-a84b-3e5ecd094b40/download/0021000_kk_shp.zip",
+    "size": 10555458
+  },
+  {
+    "name": "10. Augšdaugavas novads",
+    "url": "https://data.gov.lv/dati/dataset/b28f0eed-73b0-4e44-94e7-b04b11bf0b69/resource/bbbd655b-dc23-4b78-8cf9-1d6f4355a737/download/0022000_kk_shp.zip",
+    "size": 23328655
+  },
+  {
+    "name": "11. Ādažu novads",
+    "url": "https://data.gov.lv/dati/dataset/b28f0eed-73b0-4e44-94e7-b04b11bf0b69/resource/ff17d8b8-1f71-4231-b801-dece69b0bd79/download/0023000_kk_shp.zip",
+    "size": 5800546
+  },
+  {
+    "name": "12. Balvu novads",
+    "url": "https://data.gov.lv/dati/dataset/b28f0eed-73b0-4e44-94e7-b04b11bf0b69/resource/56cbc054-1531-44ca-9aca-40cca0632450/download/0024000_kk_shp.zip",
+    "size": 13086099
+  },
+  {
+    "name": "13. Bauskas novads",
+    "url": "https://data.gov.lv/dati/dataset/b28f0eed-73b0-4e44-94e7-b04b11bf0b69/resource/e1a23379-0513-448a-be76-9a8f97d7c466/download/0025000_kk_shp.zip",
+    "size": 17896700
+  },
+  {
+    "name": "14. Cēsu novads",
+    "url": "https://data.gov.lv/dati/dataset/b28f0eed-73b0-4e44-94e7-b04b11bf0b69/resource/47871914-4496-44e8-98b5-8491fb4405ea/download/0026000_kk_shp.zip",
+    "size": 19366183
+  },
+  {
+    "name": "15. Dienvidkurzemes novads",
+    "url": "https://data.gov.lv/dati/dataset/b28f0eed-73b0-4e44-94e7-b04b11bf0b69/resource/696fdb15-9e9d-42ba-8ad4-1c548d6304ab/download/0027000_kk_shp.zip",
+    "size": 22928401
+  },
+  {
+    "name": "16. Dobeles novads",
+    "url": "https://data.gov.lv/dati/dataset/b28f0eed-73b0-4e44-94e7-b04b11bf0b69/resource/c032360e-32b5-4d32-bc45-b7ef308099e4/download/0028000_kk_shp.zip",
+    "size": 11874347
+  },
+  {
+    "name": "17. Gulbenes novads",
+    "url": "https://data.gov.lv/dati/dataset/b28f0eed-73b0-4e44-94e7-b04b11bf0b69/resource/1858446c-4989-4e77-8c06-442a72ed6c17/download/0029000_kk_shp.zip",
+    "size": 12331088
+  },
+  {
+    "name": "18. Jelgavas novads",
+    "url": "https://data.gov.lv/dati/dataset/b28f0eed-73b0-4e44-94e7-b04b11bf0b69/resource/fbec7921-0899-40ff-b4bd-e9c9c358d3dd/download/0030000_kk_shp.zip",
+    "size": 11178034
+  },
+  {
+    "name": "19. Jēkabpils novads",
+    "url": "https://data.gov.lv/dati/dataset/b28f0eed-73b0-4e44-94e7-b04b11bf0b69/resource/a9c50faf-857e-4c4d-9201-bf4a96299c00/download/0031000_kk_shp.zip",
+    "size": 18795953
+  },
+  {
+    "name": "20. Krāslavas novads",
+    "url": "https://data.gov.lv/dati/dataset/b28f0eed-73b0-4e44-94e7-b04b11bf0b69/resource/37ad462c-e728-448b-b2ad-ddb4155eb115/download/0032000_kk_shp.zip",
+    "size": 22049272
+  },
+  {
+    "name": "21. Kuldīgas novads",
+    "url": "https://data.gov.lv/dati/dataset/b28f0eed-73b0-4e44-94e7-b04b11bf0b69/resource/74c60b1a-3443-4c74-aa55-5e844b633584/download/0033000_kk_shp.zip",
+    "size": 14596255
+  },
+  {
+    "name": "22. Ķekavas novads",
+    "url": "https://data.gov.lv/dati/dataset/b28f0eed-73b0-4e44-94e7-b04b11bf0b69/resource/43d722c2-1d87-473f-8d48-75eec38a593d/download/0034000_kk_shp.zip",
+    "size": 8407275
+  },
+  {
+    "name": "23. Limbažu novads",
+    "url": "https://data.gov.lv/dati/dataset/b28f0eed-73b0-4e44-94e7-b04b11bf0b69/resource/240b5771-c01d-44fe-b2c4-3a331e98c9d2/download/0035000_kk_shp.zip",
+    "size": 14284946
+  },
+  {
+    "name": "24. Līvānu novads",
+    "url": "https://data.gov.lv/dati/dataset/b28f0eed-73b0-4e44-94e7-b04b11bf0b69/resource/2a45d873-86e6-468e-af95-91d178e31d62/download/0036000_kk_shp.zip",
+    "size": 4636688
+  },
+  {
+    "name": "25. Ludzas novads",
+    "url": "https://data.gov.lv/dati/dataset/b28f0eed-73b0-4e44-94e7-b04b11bf0b69/resource/ac5565fe-d490-4c17-8e73-4b23d325b49b/download/0037000_kk_shp.zip",
+    "size": 17404899
+  },
+  {
+    "name": "26. Madonas novads",
+    "url": "https://data.gov.lv/dati/dataset/b28f0eed-73b0-4e44-94e7-b04b11bf0b69/resource/ef745ca6-0acb-412c-92bc-9bbb762198a0/download/0038001_kk_shp.zip",
+    "size": 20107225
+  },
+  {
+    "name": "27. Mārupes novads",
+    "url": "https://data.gov.lv/dati/dataset/b28f0eed-73b0-4e44-94e7-b04b11bf0b69/resource/fb22471a-07b1-48e9-8196-be721829fc6c/download/0039000_kk_shp.zip",
+    "size": 6917882
+  },
+  {
+    "name": "28. Ogres novads",
+    "url": "https://data.gov.lv/dati/dataset/b28f0eed-73b0-4e44-94e7-b04b11bf0b69/resource/e54496f3-000d-4975-8815-fb88b4d4aaa9/download/0040000_kk_shp.zip",
+    "size": 17105961
+  },
+  {
+    "name": "29. Olaines novads",
+    "url": "https://data.gov.lv/dati/dataset/b28f0eed-73b0-4e44-94e7-b04b11bf0b69/resource/8f5239b9-242c-4f9d-89d7-8fff01f99d8d/download/0041000_kk_shp.zip",
+    "size": 5174237
+  },
+  {
+    "name": "30. Preiļu novads",
+    "url": "https://data.gov.lv/dati/dataset/b28f0eed-73b0-4e44-94e7-b04b11bf0b69/resource/524fbe89-4116-452e-ae4c-c262485ee09e/download/0042000_kk_shp.zip",
+    "size": 12207423
+  },
+  {
+    "name": "31. Rēzeknes novads",
+    "url": "https://data.gov.lv/dati/dataset/b28f0eed-73b0-4e44-94e7-b04b11bf0b69/resource/3931e876-d642-4ce3-a5fe-e9d1cd1085d0/download/0043000_kk_shp.zip",
+    "size": 25544513
+  },
+  {
+    "name": "32. Ropažu novads",
+    "url": "https://data.gov.lv/dati/dataset/b28f0eed-73b0-4e44-94e7-b04b11bf0b69/resource/a1af6d78-5e81-4a06-8602-8102eec218fd/download/0044000_kk_shp.zip",
+    "size": 8654943
+  },
+  {
+    "name": "33. Salaspils novads",
+    "url": "https://data.gov.lv/dati/dataset/b28f0eed-73b0-4e44-94e7-b04b11bf0b69/resource/3e5e0f29-dd9d-4da4-a5a0-47211e30c076/download/0045000_kk_shp.zip",
+    "size": 3362024
+  },
+  {
+    "name": "34. Saldus novads",
+    "url": "https://data.gov.lv/dati/dataset/b28f0eed-73b0-4e44-94e7-b04b11bf0b69/resource/2ea27110-cc10-4a26-9a2e-31854dfa73f7/download/0046000_kk_shp.zip",
+    "size": 12539702
+  },
+  {
+    "name": "35. Saulkrastu novads",
+    "url": "https://data.gov.lv/dati/dataset/b28f0eed-73b0-4e44-94e7-b04b11bf0b69/resource/2dc5f360-14fe-4b22-a36d-0a2fce7976af/download/0047000_kk_shp.zip",
+    "size": 4496343
+  },
+  {
+    "name": "36. Siguldas novads",
+    "url": "https://data.gov.lv/dati/dataset/b28f0eed-73b0-4e44-94e7-b04b11bf0b69/resource/4aa9507f-6a8d-4ef9-bb8c-8b36d4b44c8d/download/0048000_kk_shp.zip",
+    "size": 9088724
+  },
+  {
+    "name": "37. Smiltenes novads",
+    "url": "https://data.gov.lv/dati/dataset/b28f0eed-73b0-4e44-94e7-b04b11bf0b69/resource/6dd929a7-b6bf-4c2a-b0b2-f0eec3200e96/download/0049000_kk_shp.zip",
+    "size": 11814435
+  },
+  {
+    "name": "38. Talsu novads",
+    "url": "https://data.gov.lv/dati/dataset/b28f0eed-73b0-4e44-94e7-b04b11bf0b69/resource/79a2af4e-bdc3-4110-b4db-bd72f7da4135/download/0051000_kk_shp.zip",
+    "size": 17328202
+  },
+  {
+    "name": "39. Tukuma novads",
+    "url": "https://data.gov.lv/dati/dataset/b28f0eed-73b0-4e44-94e7-b04b11bf0b69/resource/4c95160e-6ec8-49df-8b4d-7407bbc3ca99/download/0052000_kk_shp.zip",
+    "size": 16144984
+  },
+  {
+    "name": "40. Valkas novads",
+    "url": "https://data.gov.lv/dati/dataset/b28f0eed-73b0-4e44-94e7-b04b11bf0b69/resource/8dc20528-4032-4716-98c5-ad268cd7f4c3/download/0053000_kk_shp.zip",
+    "size": 5788329
+  },
+  {
+    "name": "41. Valmieras novads",
+    "url": "https://data.gov.lv/dati/dataset/b28f0eed-73b0-4e44-94e7-b04b11bf0b69/resource/15e0e9db-17d6-4d1d-853a-5db202abf591/download/0054000_kk_shp.zip",
+    "size": 20139873
+  },
+  {
+    "name": "42. Ventspils novads",
+    "url": "https://data.gov.lv/dati/dataset/b28f0eed-73b0-4e44-94e7-b04b11bf0b69/resource/5ac5df9e-7f76-428c-b68c-6127062816f8/download/0056000_kk_shp.zip",
+    "size": 10380764
+  }
+]
