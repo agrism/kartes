@@ -217,6 +217,10 @@ export default function App() {
 
   // Slāņu panelis (atvērts/aizvērts) - pēc noklusējuma atvērts uz datora ekrāniem
   const [isLayersOpen, setIsLayersOpen] = useState(() => (typeof window !== 'undefined' ? window.innerWidth > 820 : true));
+  const showParcelsRef = useRef(showParcels);
+  showParcelsRef.current = showParcels;
+  const showBuildingsRef = useRef(showBuildings);
+  showBuildingsRef.current = showBuildings;
   const showTransactionsRef = useRef(showTransactions);
   showTransactionsRef.current = showTransactions;
   const showListingsSSRef = useRef(showListingsSS);
@@ -227,6 +231,7 @@ export default function App() {
   showListingsPPRef.current = showListingsPP;
   const showAuctionsRef = useRef(showAuctions);
   showAuctionsRef.current = showAuctions;
+  const syncLayerVisibilityRef = useRef<() => void>(() => {});
   const updateMixMarkersRef = useRef<() => void>(() => {});
   const syncMixPointsRef = useRef<() => void>(() => {});
 
@@ -793,8 +798,15 @@ export default function App() {
         const hasRooms = currentCats.size === 0 || currentCats.has('flats') || currentCats.has('houses');
         const hasFloor = currentCats.size === 0 || currentCats.has('flats');
 
+        const activePortals = new Set<string>();
+        if (showListingsSSRef.current) { activePortals.add('ss.com'); activePortals.add('ss'); }
+        if (showListingsC24Ref.current) { activePortals.add('city24'); activePortals.add('city24.lv'); }
+        if (showListingsPPRef.current) { activePortals.add('pp.lv'); activePortals.add('pp'); }
+
         const filteredL = rawListingsRef.current.filter((f) => {
           const props = f.properties || {};
+          const portal = props.portal || 'ss.com';
+          if (!activePortals.has(portal)) return false;
           if (currentDeal !== 'all' && props.deal_type !== currentDeal) return false;
           if (currentCats.size > 0) {
             const normCat = normalizeCategory(props.category);
@@ -826,14 +838,16 @@ export default function App() {
 
         // Izsoles (auctions)
         let filteredA: any[] = [];
-        const aucExcluded = currentDeal === 'rent' || currentCats.size > 0 || aMin !== null || aMax !== null || (hasRooms && (rMin !== null || rMax !== null)) || (hasFloor && (fMin !== null || fMax !== null || noFirst));
-        if (!aucExcluded) {
-          filteredA = rawAuctionsRef.current.filter((f) => {
-            const price = Number(f.properties?.current_bid || f.properties?.price_start || f.properties?.price) || 0;
-            if (pMin !== null && price < pMin) return false;
-            if (pMax !== null && price > pMax) return false;
-            return true;
-          });
+        if (showAuctionsRef.current) {
+          const aucExcluded = currentDeal === 'rent' || currentCats.size > 0 || aMin !== null || aMax !== null || (hasRooms && (rMin !== null || rMax !== null)) || (hasFloor && (fMin !== null || fMax !== null || noFirst));
+          if (!aucExcluded) {
+            filteredA = rawAuctionsRef.current.filter((f) => {
+              const price = Number(f.properties?.current_bid || f.properties?.price_start || f.properties?.price) || 0;
+              if (pMin !== null && price < pMin) return false;
+              if (pMax !== null && price > pMax) return false;
+              return true;
+            });
+          }
         }
 
         filteredListingsRef.current = filteredL;
@@ -2198,6 +2212,9 @@ export default function App() {
           `)
           .addTo(m);
       });
+
+      // Inicializē slāņu redzamību pēc kartes ielādes
+      syncLayerVisibilityRef.current();
     });
 
     map.current = m;
@@ -2208,18 +2225,23 @@ export default function App() {
     };
   }, []);
 
-  // Slāņu redzamības pārslēgšana
-  useEffect(() => {
-    if (!map.current || !map.current.isStyleLoaded()) return;
+  // Slāņu redzamības pārslēgšana (bez bloķējoša isStyleLoaded — darbojas nekavējoties)
+  const syncLayerVisibility = () => {
+    const m = map.current;
+    if (!m) return;
     const visibility = (show: boolean) => (show ? 'visible' : 'none');
     const setLVis = (layerId: string, show: boolean) => {
-      if (map.current?.getLayer(layerId)) {
-        map.current.setLayoutProperty(layerId, 'visibility', visibility(show));
-      }
+      try {
+        if (m.getLayer(layerId)) {
+          m.setLayoutProperty(layerId, 'visibility', visibility(show));
+        }
+      } catch (err) {}
     };
 
-    if (map.current.getLayer('satellite-layer')) {
-      map.current.setLayoutProperty('satellite-layer', 'visibility', isSatellite ? 'visible' : 'none');
+    if (m.getLayer('satellite-layer')) {
+      try {
+        m.setLayoutProperty('satellite-layer', 'visibility', isSatellite ? 'visible' : 'none');
+      } catch (err) {}
     }
     setLVis('parcels-fill', showParcels);
     setLVis('parcels-line', showParcels);
@@ -2228,9 +2250,11 @@ export default function App() {
 
     const txVis = visibility(showTransactions);
     ['darijumi-zv-dots', 'darijumi-zvb-dots', 'darijumi-tg-dots'].forEach((id) => {
-      if (map.current?.getLayer(id)) {
-        map.current.setLayoutProperty(id, 'visibility', txVis);
-      }
+      try {
+        if (m.getLayer(id)) {
+          m.setLayoutProperty(id, 'visibility', txVis);
+        }
+      } catch (err) {}
     });
 
     setLVis('listings-ss-dots', showListingsSS);
@@ -2264,12 +2288,20 @@ export default function App() {
     const anyListingsOn = showListingsSS || showListingsC24 || showListingsPP || showAuctions;
     const mixVis = (anyListingsOn || showTransactions) ? 'visible' : 'none';
     ['mix-clusters', 'mix-cluster-labels', 'mix-one'].forEach((id) => {
-      if (map.current?.getLayer(id)) {
-        map.current.setLayoutProperty(id, 'visibility', mixVis);
-      }
+      try {
+        if (m.getLayer(id)) {
+          m.setLayoutProperty(id, 'visibility', mixVis);
+        }
+      } catch (err) {}
     });
     syncMixPointsRef.current();
     updateMixMarkersRef.current();
+    applyListingFiltersRef.current();
+  };
+  syncLayerVisibilityRef.current = syncLayerVisibility;
+
+  useEffect(() => {
+    syncLayerVisibility();
   }, [
     showParcels,
     showBuildings,
