@@ -169,7 +169,10 @@ export default function App() {
   const [showParcels, setShowParcels] = useState(true);
   const [showBuildings, setShowBuildings] = useState(true);
   const [showTransactions, setShowTransactions] = useState(true);
-  const [showListings, setShowListings] = useState(true);
+  const [showListingsSS, setShowListingsSS] = useState(true);
+  const [showListingsC24, setShowListingsC24] = useState(true);
+  const [showListingsPP, setShowListingsPP] = useState(true);
+  const [showAuctions, setShowAuctions] = useState(true);
   const [showZoning, setShowZoning] = useState(false);
   const [showConstruction, setShowConstruction] = useState(false);
   const [showForests, setShowForests] = useState(false);
@@ -188,16 +191,29 @@ export default function App() {
   const [isLayersOpen, setIsLayersOpen] = useState(false);
   const showTransactionsRef = useRef(showTransactions);
   showTransactionsRef.current = showTransactions;
-  const showListingsRef = useRef(showListings);
-  showListingsRef.current = showListings;
+  const showListingsSSRef = useRef(showListingsSS);
+  showListingsSSRef.current = showListingsSS;
+  const showListingsC24Ref = useRef(showListingsC24);
+  showListingsC24Ref.current = showListingsC24;
+  const showListingsPPRef = useRef(showListingsPP);
+  showListingsPPRef.current = showListingsPP;
+  const showAuctionsRef = useRef(showAuctions);
+  showAuctionsRef.current = showAuctions;
   const updateMixMarkersRef = useRef<() => void>(() => {});
+  const syncMixPointsRef = useRef<() => void>(() => {});
 
-  const totalLayersCount = 17;
+  const sludinajumiActive =
+    (showListingsSS ? 1 : 0) +
+    (showListingsC24 ? 1 : 0) +
+    (showListingsPP ? 1 : 0) +
+    (showAuctions ? 1 : 0);
+
+  const totalLayersCount = 20;
   const activeLayersCount =
     (showParcels ? 1 : 0) +
     (showBuildings ? 1 : 0) +
     (showTransactions ? 1 : 0) +
-    (showListings ? 1 : 0) +
+    sludinajumiActive +
     (showZoning ? 1 : 0) +
     (showConstruction ? 1 : 0) +
     (showForests ? 1 : 0) +
@@ -213,7 +229,6 @@ export default function App() {
     (isSatellite ? 1 : 0);
 
   const kadastrsActive = (showParcels ? 1 : 0) + (showBuildings ? 1 : 0);
-  const sludinajumiActive = showListings ? 1 : 0;
   const darijumiActive = showTransactions ? 1 : 0;
   const riskiActive = (showFloods ? 1 : 0) + (showPollution ? 1 : 0) + (showDegrading ? 1 : 0);
   const planojumsActive = (showZoning ? 1 : 0) + (showConstruction ? 1 : 0);
@@ -238,7 +253,10 @@ export default function App() {
     setShowParcels(false);
     setShowBuildings(false);
     setShowTransactions(false);
-    setShowListings(false);
+    setShowListingsSS(false);
+    setShowListingsC24(false);
+    setShowListingsPP(false);
+    setShowAuctions(false);
     setShowZoning(false);
     setShowConstruction(false);
     setShowForests(false);
@@ -307,7 +325,7 @@ export default function App() {
       const zoom = m.getZoom();
       const next: { [id: string]: maplibregl.Marker } = {};
 
-      const showL = showListingsRef.current;
+      const showL = showListingsSSRef.current || showListingsC24Ref.current || showListingsPPRef.current || showAuctionsRef.current;
       const showT = showTransactionsRef.current;
 
       if (zoom < 14 && (showL || showT)) {
@@ -513,7 +531,7 @@ export default function App() {
       m.on('mouseenter', 'mix-clusters', () => { m.getCanvas().style.cursor = 'pointer'; });
       m.on('mouseleave', 'mix-clusters', () => { m.getCanvas().style.cursor = ''; });
 
-      // 0.2 Atsevišķie sludinājumi pie z >= 13.5 (ss.com - zaļi punkti un cenu bērkas/tooltips)
+      // 0.2 Cenu bērkas (zaļās sludinājumiem, dzintara izsolēm)
       const greenBadge = createRoundBadge('#2f8a55');
       if (greenBadge && !m.hasImage('badge-green')) {
         m.addImage(
@@ -523,36 +541,42 @@ export default function App() {
         );
       }
 
+      const amberBadge = createRoundBadge('#c8860a');
+      if (amberBadge && !m.hasImage('badge-amber')) {
+        m.addImage(
+          'badge-amber',
+          { width: amberBadge.width, height: amberBadge.height, data: amberBadge.data },
+          { pixelRatio: 2, stretchX: amberBadge.stretchX, stretchY: amberBadge.stretchY, content: amberBadge.content }
+        );
+      }
+
+      // Sludinājumu avots (apvieno visus portālus: ss.com, city24, pp.lv)
       m.addSource('listings-pts', {
         type: 'geojson',
         data: { type: 'FeatureCollection', features: [] },
       });
 
+      // ── ss.com slāņi ──
       m.addLayer({
-        id: 'listings-dots',
+        id: 'listings-ss-dots',
         type: 'circle',
         source: 'listings-pts',
         minzoom: 13.5,
+        filter: ['in', ['get', 'portal'], ['literal', ['ss.com', 'ss']]],
         paint: {
-          'circle-radius': [
-            'interpolate', ['linear'], ['zoom'],
-            13.5, 4.5,
-            15, 6.0,
-            17, 8.0,
-          ],
+          'circle-radius': ['interpolate', ['linear'], ['zoom'], 13.5, 4.5, 15, 6.0, 17, 8.0],
           'circle-color': '#2f8a55',
           'circle-stroke-width': 2.0,
           'circle-stroke-color': '#ffffff',
           'circle-opacity': 0.95,
         },
       });
-
       m.addLayer({
-        id: 'listings-badges',
+        id: 'listings-ss-badges',
         type: 'symbol',
         source: 'listings-pts',
         minzoom: 13.5,
-        filter: ['!=', ['get', 'price_short'], ''],
+        filter: ['all', ['in', ['get', 'portal'], ['literal', ['ss.com', 'ss']]], ['!=', ['get', 'price_short'], '']],
         layout: {
           'icon-image': 'badge-green',
           'icon-anchor': 'bottom',
@@ -566,15 +590,134 @@ export default function App() {
           'icon-allow-overlap': false,
           'text-allow-overlap': false,
         },
-        paint: {
-          'text-color': '#ffffff',
-        },
+        paint: { 'text-color': '#ffffff' },
       });
 
-      m.on('mouseenter', 'listings-dots', () => { m.getCanvas().style.cursor = 'pointer'; });
-      m.on('mouseleave', 'listings-dots', () => { m.getCanvas().style.cursor = ''; });
-      m.on('mouseenter', 'listings-badges', () => { m.getCanvas().style.cursor = 'pointer'; });
-      m.on('mouseleave', 'listings-badges', () => { m.getCanvas().style.cursor = ''; });
+      // ── city24 slāņi ──
+      m.addLayer({
+        id: 'listings-c24-dots',
+        type: 'circle',
+        source: 'listings-pts',
+        minzoom: 13.5,
+        filter: ['in', ['get', 'portal'], ['literal', ['city24', 'city24.lv']]],
+        paint: {
+          'circle-radius': ['interpolate', ['linear'], ['zoom'], 13.5, 4.5, 15, 6.0, 17, 8.0],
+          'circle-color': '#2f8a55',
+          'circle-stroke-width': 2.0,
+          'circle-stroke-color': '#ffffff',
+          'circle-opacity': 0.95,
+        },
+      });
+      m.addLayer({
+        id: 'listings-c24-badges',
+        type: 'symbol',
+        source: 'listings-pts',
+        minzoom: 13.5,
+        filter: ['all', ['in', ['get', 'portal'], ['literal', ['city24', 'city24.lv']]], ['!=', ['get', 'price_short'], '']],
+        layout: {
+          'icon-image': 'badge-green',
+          'icon-anchor': 'bottom',
+          'icon-text-fit': 'both',
+          'icon-text-fit-padding': [1, 6, 1, 6],
+          'text-field': ['get', 'price_short'],
+          'text-font': ['Noto Sans Bold'],
+          'text-size': 11,
+          'text-anchor': 'bottom',
+          'text-offset': [0, -0.65],
+          'icon-allow-overlap': false,
+          'text-allow-overlap': false,
+        },
+        paint: { 'text-color': '#ffffff' },
+      });
+
+      // ── pp.lv slāņi ──
+      m.addLayer({
+        id: 'listings-pp-dots',
+        type: 'circle',
+        source: 'listings-pts',
+        minzoom: 13.5,
+        filter: ['in', ['get', 'portal'], ['literal', ['pp.lv', 'pp']]],
+        paint: {
+          'circle-radius': ['interpolate', ['linear'], ['zoom'], 13.5, 4.5, 15, 6.0, 17, 8.0],
+          'circle-color': '#2f8a55',
+          'circle-stroke-width': 2.0,
+          'circle-stroke-color': '#ffffff',
+          'circle-opacity': 0.95,
+        },
+      });
+      m.addLayer({
+        id: 'listings-pp-badges',
+        type: 'symbol',
+        source: 'listings-pts',
+        minzoom: 13.5,
+        filter: ['all', ['in', ['get', 'portal'], ['literal', ['pp.lv', 'pp']]], ['!=', ['get', 'price_short'], '']],
+        layout: {
+          'icon-image': 'badge-green',
+          'icon-anchor': 'bottom',
+          'icon-text-fit': 'both',
+          'icon-text-fit-padding': [1, 6, 1, 6],
+          'text-field': ['get', 'price_short'],
+          'text-font': ['Noto Sans Bold'],
+          'text-size': 11,
+          'text-anchor': 'bottom',
+          'text-offset': [0, -0.65],
+          'icon-allow-overlap': false,
+          'text-allow-overlap': false,
+        },
+        paint: { 'text-color': '#ffffff' },
+      });
+
+      // ── Izsoļu (auctions) avots un slāņi ──
+      m.addSource('auctions-pts', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+      });
+      m.addLayer({
+        id: 'auctions-dots',
+        type: 'circle',
+        source: 'auctions-pts',
+        minzoom: 12.5,
+        paint: {
+          'circle-radius': ['interpolate', ['linear'], ['zoom'], 12.5, 4.5, 15, 6.5, 17, 8.5],
+          'circle-color': '#c8860a',
+          'circle-stroke-width': 2.0,
+          'circle-stroke-color': '#ffffff',
+          'circle-opacity': 0.95,
+        },
+      });
+      m.addLayer({
+        id: 'auctions-badges',
+        type: 'symbol',
+        source: 'auctions-pts',
+        minzoom: 12.5,
+        filter: ['!=', ['get', 'price_short'], ''],
+        layout: {
+          'icon-image': 'badge-amber',
+          'icon-anchor': 'bottom',
+          'icon-text-fit': 'both',
+          'icon-text-fit-padding': [1, 6, 1, 6],
+          'text-field': ['get', 'price_short'],
+          'text-font': ['Noto Sans Bold'],
+          'text-size': 11,
+          'text-anchor': 'bottom',
+          'text-offset': [0, -0.65],
+          'icon-allow-overlap': false,
+          'text-allow-overlap': false,
+        },
+        paint: { 'text-color': '#ffffff' },
+      });
+
+      const allListingLayers = [
+        'listings-ss-dots', 'listings-ss-badges',
+        'listings-c24-dots', 'listings-c24-badges',
+        'listings-pp-dots', 'listings-pp-badges',
+        'auctions-dots', 'auctions-badges',
+      ];
+      allListingLayers.forEach((lyr) => {
+        m.on('mouseenter', lyr, () => { m.getCanvas().style.cursor = 'pointer'; });
+        m.on('mouseleave', lyr, () => { m.getCanvas().style.cursor = ''; });
+      });
+
       m.on('mouseenter', 'mix-one', () => { m.getCanvas().style.cursor = 'pointer'; });
       m.on('mouseleave', 'mix-one', () => { m.getCanvas().style.cursor = ''; });
 
@@ -587,22 +730,33 @@ export default function App() {
         }
       });
 
-      // 1. Ātrā sludinājumu un darījumu punktu ielāde (apvieno klasteros un kartē)
+      // 1. Ātrā sludinājumu, izsoļu un darījumu punktu ielāde (apvieno klasteros un kartē)
       let listingsFeats: any[] = [];
+      let auctionsFeats: any[] = [];
       let txFeats: any[] = [];
 
       const syncMixPoints = () => {
         const src = m.getSource('mix-pts') as maplibregl.GeoJSONSource | undefined;
         if (src) {
+          const activePortals = new Set<string>();
+          if (showListingsSSRef.current) { activePortals.add('ss.com'); activePortals.add('ss'); }
+          if (showListingsC24Ref.current) { activePortals.add('city24'); activePortals.add('city24.lv'); }
+          if (showListingsPPRef.current) { activePortals.add('pp.lv'); activePortals.add('pp'); }
+
+          const activeListings = listingsFeats.filter((f) => activePortals.has(f.properties?.portal || 'ss.com'));
+          const activeAuctions = showAuctionsRef.current ? auctionsFeats : [];
+          const activeTx = showTransactionsRef.current ? txFeats : [];
+
           src.setData({
             type: 'FeatureCollection',
-            features: [...listingsFeats, ...txFeats],
+            features: [...activeListings, ...activeAuctions, ...activeTx],
           });
           updateMixMarkers();
         }
       };
+      syncMixPointsRef.current = syncMixPoints;
 
-      fetch(`${API_BASE}/api/listings?limit=25000`)
+      fetch(`${API_BASE}/api/listings?limit=30000`)
         .then((r) => {
           if (!r.ok) throw new Error('API listings offline');
           return r.json();
@@ -611,6 +765,7 @@ export default function App() {
           if (!data || !Array.isArray(data.features)) return;
           listingsFeats = data.features.map((f: any) => {
             const p = Number(f.properties?.price) || 0;
+            const portal = f.properties?.portal || 'ss.com';
             return {
               ...f,
               properties: {
@@ -618,6 +773,7 @@ export default function App() {
                 l: 1,
                 t: 0,
                 color: '#2f8a55',
+                portal,
                 price_short: formatShortPrice(p),
               },
             };
@@ -634,11 +790,22 @@ export default function App() {
             .then((r) => r.json())
             .then((listingsData) => {
               if (!Array.isArray(listingsData)) return;
-              listingsFeats = listingsData.map((item: any) => ({
-                type: 'Feature',
-                geometry: { type: 'Point', coordinates: [item[0], item[1]] },
-                properties: { l: 1, t: 0, color: '#2f8a55', portal: item[2] || 'ss.com', type: item[3] },
-              }));
+              listingsFeats = listingsData.map((item: any) => {
+                const pId = item[2] >> 1;
+                const portal = pId === 1 ? 'city24' : pId === 2 ? 'pp.lv' : 'ss.com';
+                const dealType = (item[2] & 1) === 1 ? 'rent' : 'sell';
+                return {
+                  type: 'Feature',
+                  geometry: { type: 'Point', coordinates: [item[0], item[1]] },
+                  properties: {
+                    l: 1,
+                    t: 0,
+                    color: '#2f8a55',
+                    portal,
+                    deal_type: dealType,
+                  },
+                };
+              });
               const lSrc = m.getSource('listings-pts') as maplibregl.GeoJSONSource | undefined;
               if (lSrc) {
                 lSrc.setData({ type: 'FeatureCollection', features: listingsFeats });
@@ -647,6 +814,33 @@ export default function App() {
             })
             .catch(() => {});
         });
+
+      // Izsoļu (auctions) ielāde
+      fetch(`${API_BASE}/api/auctions`)
+        .then((r) => r.json())
+        .then((aucData) => {
+          if (!aucData || !Array.isArray(aucData.features)) return;
+          auctionsFeats = aucData.features.map((f: any) => {
+            const price = Number(f.properties?.current_bid || f.properties?.price_start || f.properties?.price) || 0;
+            return {
+              ...f,
+              properties: {
+                ...f.properties,
+                l: 1,
+                t: 0,
+                is_auction: 1,
+                color: '#c8860a',
+                price_short: formatShortPrice(price),
+              },
+            };
+          });
+          const aucSrc = m.getSource('auctions-pts') as maplibregl.GeoJSONSource | undefined;
+          if (aucSrc) {
+            aucSrc.setData({ type: 'FeatureCollection', features: auctionsFeats });
+          }
+          syncMixPoints();
+        })
+        .catch(() => {});
 
       // 2. Fona darījumu punktu ielāde (apvieno ar sludinājumu klasteriem)
       fetch('/data/tx-pts.json')
@@ -1507,17 +1701,91 @@ export default function App() {
           });
       };
 
-      // Klikšķa apstrāde sludinājumiem
-      m.on('click', 'listings-dots', (e) => {
-        if (!e.features || !e.features[0]) return;
-        if (e.originalEvent) (e.originalEvent as any)._markerHandled = true;
-        openListingPopup(e.features[0]);
+      const openAuctionPopup = (f: any) => {
+        const p = f.properties || {};
+        const coords = (f.geometry as GeoJSON.Point).coordinates;
+        const lng = coords[0];
+        const lat = coords[1];
+
+        if (currentPopupRef.current) {
+          currentPopupRef.current.remove();
+        }
+
+        const price = Number(p.current_bid || p.price_start || p.price) || 0;
+        const startPrice = Number(p.price_start) || price;
+        const address = p.addr || 'Nekustamā īpašuma izsole';
+        const stage = p.stage || '';
+        const state = p.state || 'Notiek izsole';
+        const endsAt = p.ends_at ? new Date(p.ends_at).toLocaleDateString('lv-LV') : '';
+        const url = p.url || `https://izsoles.ta.gov.lv/izsole/${p.id || ''}`;
+        const cadCode = p.cadastre || p.parcel || '';
+
+        const html = `
+          <div class="listing-popup-card">
+            <div class="lpc-header-no-img">
+              <div class="lpc-deal-tag" style="background:#fef3c7; color:#b45309; border: 1px solid #fde68a;">
+                <span class="lpc-dot" style="background:#d97706;"></span>
+                Izsole ${stage ? `(${stage})` : ''}
+              </div>
+              <button class="lpc-close-btn" onclick="window.__closeCurrentPopup()" title="Aizvērt">✕</button>
+            </div>
+            <div class="lpc-body">
+              <div class="lpc-price-row">
+                <span class="lpc-price" style="color:#b45309;">${price.toLocaleString('lv-LV')} €</span>
+                ${startPrice && startPrice !== price ? `<span class="lpc-ppm2">Sākuma: ${startPrice.toLocaleString('lv-LV')} €</span>` : ''}
+              </div>
+              <div class="lpc-address" title="${address}">${address}</div>
+              <div style="font-size:12px; color:#64748b; margin-bottom:8px; display:flex; flex-direction:column; gap:3px;">
+                <div><strong>Statuss:</strong> ${state}</div>
+                ${endsAt ? `<div><strong>Noslēdzas:</strong> ${endsAt}</div>` : ''}
+                ${cadCode ? `<div><strong>Kadastrs:</strong> ${cadCode}</div>` : ''}
+              </div>
+              <div class="lpc-actions-row">
+                ${cadCode ? `
+                  <button class="lpc-btn" onclick="window.__openParcelReport('${cadCode}')">
+                    Kadastrs ➔
+                  </button>
+                ` : ''}
+                <a class="lpc-btn lpc-btn-portal" style="background:#c8860a; color:#fff;" href="${url}" target="_blank" rel="noopener noreferrer">
+                  Atvērt izsoli ↗
+                </a>
+              </div>
+            </div>
+          </div>
+        `;
+
+        const popup = new maplibregl.Popup({
+          offset: 12,
+          className: 'listing-popup-wrapper',
+          maxWidth: '350px',
+        })
+          .setLngLat([lng, lat])
+          .setHTML(html)
+          .addTo(m);
+
+        currentPopupRef.current = popup;
+      };
+
+      // Klikšķa apstrāde sludinājumu un izsoļu slāņiem
+      const clickListingLayers = [
+        'listings-ss-dots', 'listings-ss-badges',
+        'listings-c24-dots', 'listings-c24-badges',
+        'listings-pp-dots', 'listings-pp-badges',
+      ];
+      clickListingLayers.forEach((lyr) => {
+        m.on('click', lyr, (e) => {
+          if (!e.features || !e.features[0]) return;
+          if (e.originalEvent) (e.originalEvent as any)._markerHandled = true;
+          openListingPopup(e.features[0]);
+        });
       });
 
-      m.on('click', 'listings-badges', (e) => {
-        if (!e.features || !e.features[0]) return;
-        if (e.originalEvent) (e.originalEvent as any)._markerHandled = true;
-        openListingPopup(e.features[0]);
+      ['auctions-dots', 'auctions-badges'].forEach((lyr) => {
+        m.on('click', lyr, (e) => {
+          if (!e.features || !e.features[0]) return;
+          if (e.originalEvent) (e.originalEvent as any)._markerHandled = true;
+          openAuctionPopup(e.features[0]);
+        });
       });
 
       // Klikšķa apstrāde atsevišķiem klasteru punktiem pie z < 14
@@ -1525,7 +1793,9 @@ export default function App() {
         if (!e.features || !e.features[0]) return;
         if (e.originalEvent) (e.originalEvent as any)._markerHandled = true;
         const f = e.features[0];
-        if (f.properties?.l === 1) {
+        if (f.properties?.is_auction === 1) {
+          openAuctionPopup(f);
+        } else if (f.properties?.l === 1) {
           openListingPopup(f);
         } else if (f.properties?.t === 1) {
           const coords = (f.geometry as GeoJSON.Point).coordinates;
@@ -1711,8 +1981,15 @@ export default function App() {
       }
     });
 
-    setLVis('listings-dots', showListings);
-    setLVis('listings-badges', showListings);
+    setLVis('listings-ss-dots', showListingsSS);
+    setLVis('listings-ss-badges', showListingsSS);
+    setLVis('listings-c24-dots', showListingsC24);
+    setLVis('listings-c24-badges', showListingsC24);
+    setLVis('listings-pp-dots', showListingsPP);
+    setLVis('listings-pp-badges', showListingsPP);
+    setLVis('auctions-dots', showAuctions);
+    setLVis('auctions-badges', showAuctions);
+
     setLVis('energy-dots', showEnergy);
     setLVis('pollution-dots', showPollution);
     setLVis('tapis-zone-fill', showZoning);
@@ -1732,18 +2009,23 @@ export default function App() {
     setLVis('schools-dots', showSchools);
     setLVis('transports-dots', showTransports);
 
-    const mixVis = (showListings || showTransactions) ? 'visible' : 'none';
+    const anyListingsOn = showListingsSS || showListingsC24 || showListingsPP || showAuctions;
+    const mixVis = (anyListingsOn || showTransactions) ? 'visible' : 'none';
     ['mix-clusters', 'mix-cluster-labels', 'mix-one'].forEach((id) => {
       if (map.current?.getLayer(id)) {
         map.current.setLayoutProperty(id, 'visibility', mixVis);
       }
     });
+    syncMixPointsRef.current();
     updateMixMarkersRef.current();
   }, [
     showParcels,
     showBuildings,
     showTransactions,
-    showListings,
+    showListingsSS,
+    showListingsC24,
+    showListingsPP,
+    showAuctions,
     showZoning,
     showConstruction,
     showForests,
@@ -2076,7 +2358,7 @@ export default function App() {
                         <span className="lc-cat-name">Sludinājumi</span>
                       </div>
                       <span className={`lc-pill ${sludinajumiActive > 0 ? 'active' : ''}`}>
-                        {sludinajumiActive > 0 ? `${sludinajumiActive}/1` : '1'}
+                        {sludinajumiActive > 0 ? `${sludinajumiActive}/4` : '4'}
                       </span>
                       <span className="lc-cat-chev">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
@@ -2085,10 +2367,38 @@ export default function App() {
                       </span>
                     </button>
                     <div className="lc-layers">
-                      <div className={`lc-row ${showListings ? 'on' : ''}`} onClick={(e) => { e.stopPropagation(); setShowListings(!showListings); }}>
+                      {/* ss.com */}
+                      <div className={`lc-row ${showListingsSS ? 'on' : ''}`} onClick={(e) => { e.stopPropagation(); setShowListingsSS(!showListingsSS); }}>
                         <div className="lc-swatch" style={{ background: '#2f8a55' }} />
                         <span className="lc-row-name">ss.com sludinājumi</span>
-                        <button className={`lc-tog ${showListings ? 'on' : ''}`} type="button" tabIndex={-1}>
+                        <button className={`lc-tog ${showListingsSS ? 'on' : ''}`} type="button" tabIndex={-1}>
+                          <div className="lc-tog-k" />
+                        </button>
+                      </div>
+
+                      {/* city24 */}
+                      <div className={`lc-row ${showListingsC24 ? 'on' : ''}`} onClick={(e) => { e.stopPropagation(); setShowListingsC24(!showListingsC24); }}>
+                        <div className="lc-swatch" style={{ background: '#2f8a55' }} />
+                        <span className="lc-row-name">city24 sludinājumi</span>
+                        <button className={`lc-tog ${showListingsC24 ? 'on' : ''}`} type="button" tabIndex={-1}>
+                          <div className="lc-tog-k" />
+                        </button>
+                      </div>
+
+                      {/* pp.lv */}
+                      <div className={`lc-row ${showListingsPP ? 'on' : ''}`} onClick={(e) => { e.stopPropagation(); setShowListingsPP(!showListingsPP); }}>
+                        <div className="lc-swatch" style={{ background: '#2f8a55' }} />
+                        <span className="lc-row-name">pp.lv sludinājumi</span>
+                        <button className={`lc-tog ${showListingsPP ? 'on' : ''}`} type="button" tabIndex={-1}>
+                          <div className="lc-tog-k" />
+                        </button>
+                      </div>
+
+                      {/* Izsoles */}
+                      <div className={`lc-row ${showAuctions ? 'on' : ''}`} onClick={(e) => { e.stopPropagation(); setShowAuctions(!showAuctions); }}>
+                        <div className="lc-swatch" style={{ background: '#c8860a' }} />
+                        <span className="lc-row-name">Izsoles (ta.gov.lv)</span>
+                        <button className={`lc-tog ${showAuctions ? 'on' : ''}`} type="button" tabIndex={-1}>
                           <div className="lc-tog-k" />
                         </button>
                       </div>

@@ -14,7 +14,8 @@ import requests
 import psycopg
 
 DB_URL = os.environ.get("DATABASE_URL", "postgresql://kartes:kartes_secret_password@db:5432/kartes")
-LISTINGS_GEOJSON_URL = "https://kadastrakarte.lv/api/listings-geojson.php?portal=ss.com&bbox=20.9,55.6,28.3,58.1"
+DEFAULT_PORTALS = ["city24", "pp.lv"]
+LISTING_GEOJSON_BASE = "https://kadastrakarte.lv/api/listings-geojson.php"
 LISTING_HISTORY_URL = "https://kadastrakarte.lv/api/listing-history.php"
 
 def safe_float(val, max_val=1e12):
@@ -52,15 +53,34 @@ def parse_floor(floor_str):
         pass
     return None, None
 
-def seed_initial_listings():
-    print(f"📥 1. Lejupielādē Latvijas sludinājumu GeoJSON no {LISTINGS_GEOJSON_URL}...")
-    resp = requests.get(LISTINGS_GEOJSON_URL, timeout=60)
-    resp.raise_for_status()
-    data = resp.json()
+def seed_initial_listings(portals=None):
+    if not portals:
+        portals = DEFAULT_PORTALS
+    if isinstance(portals, str):
+        portals = [p.strip() for p in portals.split(",") if p.strip()]
 
-    features = data.get("features", [])
+    features = []
+    for portal in portals:
+        url = f"{LISTING_GEOJSON_BASE}?portal={portal}&bbox=20.9,55.6,28.3,58.1"
+        print(f"📥 1. Lejupielādē Latvijas sludinājumu GeoJSON portālam '{portal}'...")
+        try:
+            resp = requests.get(url, timeout=60)
+            resp.raise_for_status()
+            data = resp.json()
+            portal_feats = data.get("features", [])
+            for f in portal_feats:
+                if "properties" in f:
+                    f["properties"]["portal"] = portal
+            print(f"   ✅ Saņemti {len(portal_feats)} sludinājumi no '{portal}'.")
+            features.extend(portal_feats)
+        except Exception as e:
+            print(f"   ❌ Kļūda ielādējot '{portal}': {e}")
+
     total_count = len(features)
-    print(f"✅ Saņemti {total_count} sludinājumi.")
+    print(f"✅ Kopā apstrādei sagatavoti {total_count} sludinājumi.")
+    if total_count == 0:
+        print("Brīdinājums: Nav datu, ko ievietot.")
+        return
 
     print(f"🔌 Savienojas ar datubāzi...")
     with psycopg.connect(DB_URL) as conn:
@@ -304,4 +324,5 @@ def fetch_and_save_histories(candidates):
     print("✅ Vēstures ieraksti un attēli veiksmīgi saglabāti datubāzē!")
 
 if __name__ == "__main__":
-    seed_initial_listings()
+    target_portals = sys.argv[1].split(",") if len(sys.argv) > 1 else DEFAULT_PORTALS
+    seed_initial_listings(target_portals)

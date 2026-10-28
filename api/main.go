@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -63,6 +65,8 @@ func main() {
 	mux.HandleFunc("/api/listings-geojson", handleListingsGeoJSON)
 	mux.HandleFunc("/api/listing-history", handleListingHistory)
 	mux.HandleFunc("/api/popup-signals", handlePopupSignals)
+	mux.HandleFunc("/api/auctions", handleAuctions)
+	mux.HandleFunc("/api/auctions-geojson", handleAuctions)
 
 	handler := enableCORS(mux)
 
@@ -872,5 +876,54 @@ func handlePopupSignals(w http.ResponseWriter, r *http.Request) {
 		"risk":    hasRisks,
 		"sources": 11,
 	})
+}
+
+var (
+	auctionsCacheMu   sync.RWMutex
+	auctionsCacheData []byte
+	auctionsCacheTime time.Time
+)
+
+func handleAuctions(w http.ResponseWriter, r *http.Request) {
+	auctionsCacheMu.RLock()
+	if len(auctionsCacheData) > 0 && time.Since(auctionsCacheTime) < 10*time.Minute {
+		data := auctionsCacheData
+		auctionsCacheMu.RUnlock()
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(data)
+		return
+	}
+	auctionsCacheMu.RUnlock()
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Get("https://kadastrakarte.lv/api/auctions-geojson.php?bbox=20.9,55.6,28.3,58.1")
+	if err != nil {
+		auctionsCacheMu.RLock()
+		if len(auctionsCacheData) > 0 {
+			data := auctionsCacheData
+			auctionsCacheMu.RUnlock()
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(data)
+			return
+		}
+		auctionsCacheMu.RUnlock()
+		writeJSON(w, http.StatusOK, map[string]any{"type": "FeatureCollection", "count": 0, "features": []any{}})
+		return
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		writeJSON(w, http.StatusOK, map[string]any{"type": "FeatureCollection", "count": 0, "features": []any{}})
+		return
+	}
+
+	auctionsCacheMu.Lock()
+	auctionsCacheData = body
+	auctionsCacheTime = time.Now()
+	auctionsCacheMu.Unlock()
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(body)
 }
 
