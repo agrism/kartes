@@ -53,6 +53,62 @@ function getEndpoints() {
   };
 }
 
+function formatShortPrice(price: number): string {
+  if (!price || price <= 0) return '';
+  if (price >= 1_000_000) {
+    const m = price / 1_000_000;
+    return (m % 1 === 0 ? m.toFixed(0) : m.toFixed(1)) + 'M';
+  }
+  if (price >= 10_000) {
+    return Math.round(price / 1000) + 'K';
+  }
+  if (price >= 1_000) {
+    const k = price / 1000;
+    return (k % 1 === 0 ? k.toFixed(0) : k.toFixed(1)) + 'K';
+  }
+  return `${Math.round(price)} €`;
+}
+
+function createRoundBadge(color: string) {
+  const S = 2, W = 64, pH = 22, arH = 6, H = pH + arH, R = 5;
+  const c = document.createElement('canvas');
+  c.width = W * S;
+  c.height = H * S;
+  const ctx = c.getContext('2d');
+  if (!ctx) return null;
+  ctx.scale(S, S);
+  const cx = W / 2, aw = 5;
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(R, 0);
+  ctx.lineTo(W - R, 0);
+  ctx.arcTo(W, 0, W, R, R);
+  ctx.lineTo(W, pH - R);
+  ctx.arcTo(W, pH, W - R, pH, R);
+  ctx.lineTo(cx + aw, pH);
+  ctx.lineTo(cx, pH + arH);
+  ctx.lineTo(cx - aw, pH);
+  ctx.lineTo(R, pH);
+  ctx.arcTo(0, pH, 0, pH - R, R);
+  ctx.lineTo(0, R);
+  ctx.arcTo(0, 0, R, 0, R);
+  ctx.closePath();
+  ctx.fill();
+  const d = ctx.getImageData(0, 0, c.width, c.height);
+  return {
+    width: c.width,
+    height: c.height,
+    data: new Uint8Array(d.data.buffer),
+    // Two-sided stretch so the arrow in the middle stays fixed in width and centered
+    stretchX: [
+      [R * S, (cx - aw) * S],
+      [(cx + aw) * S, (W - R) * S],
+    ] as [number, number][],
+    stretchY: [[R * S, (pH - R) * S]] as [number, number][],
+    content: [R * S, 2 * S, (W - R) * S, (pH - 2) * S] as [number, number, number, number],
+  };
+}
+
 export default function App() {
   const { apiBase: API_BASE, tilesBase: TILES_BASE, dataBase: DATA_BASE } = getEndpoints();
   const mapContainer = useRef<HTMLDivElement>(null);
@@ -457,11 +513,21 @@ export default function App() {
       m.on('mouseenter', 'mix-clusters', () => { m.getCanvas().style.cursor = 'pointer'; });
       m.on('mouseleave', 'mix-clusters', () => { m.getCanvas().style.cursor = ''; });
 
-      // 0.2 Atsevišķie sludinājumi pie z >= 13.5 (ss.com - zaļi punkti)
+      // 0.2 Atsevišķie sludinājumi pie z >= 13.5 (ss.com - zaļi punkti un cenu bērkas/tooltips)
+      const greenBadge = createRoundBadge('#2f8a55');
+      if (greenBadge && !m.hasImage('badge-green')) {
+        m.addImage(
+          'badge-green',
+          { width: greenBadge.width, height: greenBadge.height, data: greenBadge.data },
+          { pixelRatio: 2, stretchX: greenBadge.stretchX, stretchY: greenBadge.stretchY, content: greenBadge.content }
+        );
+      }
+
       m.addSource('listings-pts', {
         type: 'geojson',
         data: { type: 'FeatureCollection', features: [] },
       });
+
       m.addLayer({
         id: 'listings-dots',
         type: 'circle',
@@ -475,14 +541,40 @@ export default function App() {
             17, 8.0,
           ],
           'circle-color': '#2f8a55',
-          'circle-stroke-width': 1.8,
+          'circle-stroke-width': 2.0,
           'circle-stroke-color': '#ffffff',
           'circle-opacity': 0.95,
         },
       });
 
+      m.addLayer({
+        id: 'listings-badges',
+        type: 'symbol',
+        source: 'listings-pts',
+        minzoom: 13.5,
+        filter: ['!=', ['get', 'price_short'], ''],
+        layout: {
+          'icon-image': 'badge-green',
+          'icon-anchor': 'bottom',
+          'icon-text-fit': 'both',
+          'icon-text-fit-padding': [1, 6, 1, 6],
+          'text-field': ['get', 'price_short'],
+          'text-font': ['Noto Sans Bold'],
+          'text-size': 11,
+          'text-anchor': 'bottom',
+          'text-offset': [0, -0.65],
+          'icon-allow-overlap': false,
+          'text-allow-overlap': false,
+        },
+        paint: {
+          'text-color': '#ffffff',
+        },
+      });
+
       m.on('mouseenter', 'listings-dots', () => { m.getCanvas().style.cursor = 'pointer'; });
       m.on('mouseleave', 'listings-dots', () => { m.getCanvas().style.cursor = ''; });
+      m.on('mouseenter', 'listings-badges', () => { m.getCanvas().style.cursor = 'pointer'; });
+      m.on('mouseleave', 'listings-badges', () => { m.getCanvas().style.cursor = ''; });
       m.on('mouseenter', 'mix-one', () => { m.getCanvas().style.cursor = 'pointer'; });
       m.on('mouseleave', 'mix-one', () => { m.getCanvas().style.cursor = ''; });
 
@@ -517,10 +609,19 @@ export default function App() {
         })
         .then((data) => {
           if (!data || !Array.isArray(data.features)) return;
-          listingsFeats = data.features.map((f: any) => ({
-            ...f,
-            properties: { ...f.properties, l: 1, t: 0, color: '#2f8a55' },
-          }));
+          listingsFeats = data.features.map((f: any) => {
+            const p = Number(f.properties?.price) || 0;
+            return {
+              ...f,
+              properties: {
+                ...f.properties,
+                l: 1,
+                t: 0,
+                color: '#2f8a55',
+                price_short: formatShortPrice(p),
+              },
+            };
+          });
           const lSrc = m.getSource('listings-pts') as maplibregl.GeoJSONSource | undefined;
           if (lSrc) {
             lSrc.setData({ type: 'FeatureCollection', features: listingsFeats });
@@ -1409,12 +1510,20 @@ export default function App() {
       // Klikšķa apstrāde sludinājumiem
       m.on('click', 'listings-dots', (e) => {
         if (!e.features || !e.features[0]) return;
+        if (e.originalEvent) (e.originalEvent as any)._markerHandled = true;
+        openListingPopup(e.features[0]);
+      });
+
+      m.on('click', 'listings-badges', (e) => {
+        if (!e.features || !e.features[0]) return;
+        if (e.originalEvent) (e.originalEvent as any)._markerHandled = true;
         openListingPopup(e.features[0]);
       });
 
       // Klikšķa apstrāde atsevišķiem klasteru punktiem pie z < 14
       m.on('click', 'mix-one', (e) => {
         if (!e.features || !e.features[0]) return;
+        if (e.originalEvent) (e.originalEvent as any)._markerHandled = true;
         const f = e.features[0];
         if (f.properties?.l === 1) {
           openListingPopup(f);
@@ -1436,6 +1545,7 @@ export default function App() {
       });
 
       m.on('click', 'buildings-fill', (e) => {
+        if ((e.originalEvent as any)?._markerHandled) return;
         if (!e.features || !e.features[0]) return;
         const parcelCode = e.features[0].properties?.parcelcode || e.features[0].properties?.parcel_code;
         if (parcelCode) {
@@ -1444,6 +1554,7 @@ export default function App() {
       });
 
       m.on('click', 'parcels-fill', (e) => {
+        if ((e.originalEvent as any)?._markerHandled) return;
         if (!e.features || !e.features[0]) return;
         const code = e.features[0].properties?.code;
         if (code) {
@@ -1601,6 +1712,7 @@ export default function App() {
     });
 
     setLVis('listings-dots', showListings);
+    setLVis('listings-badges', showListings);
     setLVis('energy-dots', showEnergy);
     setLVis('pollution-dots', showPollution);
     setLVis('tapis-zone-fill', showZoning);
