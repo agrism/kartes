@@ -15,5 +15,5 @@ COPY . .
 # Izveido mapi lejupielādēto datu kešam
 RUN mkdir -p /app/cache
 
-ENTRYPOINT ["python", "importer.py"]
-CMD ["--help"]
+ENTRYPOINT ["python"]
+CMD ["run_scrapers.py", "--help"]

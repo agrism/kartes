@@ -33,12 +33,13 @@
   - Izveidota tabula `public.listing_price_changes` vēsturisko cenu lēcienu un atlaižu reģistrēšanai (`listing_id`, `change_date`, `old_price`, `new_price`, `delta_amount`, `delta_percent`).
 - [x] **1.2. Vēsturiskā sākuma datu ielāde (Initial Historical Seed):**
   - Ieviestais skripts `importer/seed_listings.py` sekmīgi ielādējis 2 367+ aktīvos sludinājumus kopā ar to vēsturisko cenu izmaiņu hronoloģiju, bildēm, dienām tirgū un sasaisti ar kadastra vienībām.
-- [ ] **1.3. Modulārs skreiperu karkass (Multi-Source Crawler Framework):**
+- [x] **1.3. Modulārs skreiperu karkass (Multi-Source Crawler Framework):**
   - `importer/scrapers/base.py` – unificēts modelis (`ListingItem`) un abstrakts bāzes skreiperis.
   - `importer/scrapers/ss_com.py` – `ss.com` periodiskais skreiperis (dzīvokļi, mājas, zeme, telpas, īre).
-  - `importer/scrapers/city24.py` & `pp_lv.py` – papildu Latvijas nekustamā īpašuma portālu moduļi.
-  - `importer/scrapers/izsoles.py` – valsts tiesu un maksātnespējas izsoļu modulis (`izsoles.ta.gov.lv`).
-  - `importer/scrapers/pipeline.py` – automātiska adrešu ģeokodēšana ar `addresses`, kadastra zemes vienības piesaiste ar `parcels`, cenu izmaiņu piefiksēšana un neaktīvo sludinājumu atzīmēšana.
+  - `importer/scrapers/city24.py` – `city24.lv` oficiālā REST API integrācija ar koordinātām un attēliem.
+  - `importer/scrapers/izsoles.py` – valsts tiesu un maksātnespējas izsoļu modulis (`izsoles.ta.gov.lv`) ar kadastra numuru piesaisti.
+  - `importer/scrapers/pipeline.py` – automātiska adrešu ģeokodēšana ar `addresses`, kadastra zemes vienības piesaiste ar `parcels` (`ST_Contains`), cenu dinamikas fiksēšana `listing_price_changes`.
+  - `importer/run_scrapers.py` – vienots palaidējs ar `--source`, `--limit`, `--mode` un `--daemon` atbalstu.
 - [x] **1.4. Go API gala punkti (Dinamiskie JSON dati):**
   - `/api/listings` – atgriež filtrētus sludinājumus GeoJSON formātā (pēc `portal`, `bbox`, `limit`).
   - `/api/listing-history` – atgriež sludinājuma cenu izmaiņu vēsturi, dienas tirgū un bilžu galeriju JSON formātā.
