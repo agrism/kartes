@@ -733,7 +733,21 @@ export const MekletView: React.FC<MekletViewProps> = ({
                               title="Pietuvināt attēlus"
                               style={{ cursor: 'pointer' }}
                             >
-                              <img src={row.images[0]} alt="" loading="lazy" />
+                              <img
+                                src={row.images[0]}
+                                alt=""
+                                loading="lazy"
+                                onError={(e) => {
+                                  const target = e.currentTarget;
+                                  target.style.display = 'none';
+                                  if (target.parentElement) {
+                                    const ph = document.createElement('div');
+                                    ph.className = 'meklet-thumb-placeholder';
+                                    ph.textContent = 'Nav foto';
+                                    target.parentElement.appendChild(ph);
+                                  }
+                                }}
+                              />
                               {row.images.length > 1 && (
                                 <span className="meklet-photo-count">📷 {row.images.length}</span>
                               )}

@@ -1630,23 +1630,26 @@ func searchListings(w http.ResponseWriter, ctx context.Context, qParams url.Valu
 		dir = "DESC"
 	}
 
-	orderBy := "l.last_seen_at DESC"
+	orderBy := "l.first_seen_at DESC, l.id DESC"
 	switch sortField {
 	case "date":
-		orderBy = fmt.Sprintf("l.first_seen_at %s", dir)
+		orderBy = fmt.Sprintf("COALESCE(l.published_at, l.first_seen_at) %s NULLS LAST, l.id %s", dir, dir)
 	case "price", "price_asc", "price_desc":
 		if sortField == "price_asc" {
 			dir = "ASC"
 		}
-		orderBy = fmt.Sprintf("l.price %s NULLS LAST", dir)
-	case "ppm", "price_per_m2":
-		orderBy = fmt.Sprintf("l.price_per_m2 %s NULLS LAST", dir)
+		orderBy = fmt.Sprintf("l.price %s NULLS LAST, l.id %s", dir, dir)
+	case "ppm", "price_per_m2", "ppm_asc", "ppm_desc":
+		if sortField == "ppm_asc" {
+			dir = "ASC"
+		}
+		orderBy = fmt.Sprintf("l.price_per_m2 %s NULLS LAST, l.id %s", dir, dir)
 	case "area":
-		orderBy = fmt.Sprintf("l.area_m2 %s NULLS LAST", dir)
+		orderBy = fmt.Sprintf("l.area_m2 %s NULLS LAST, l.id %s", dir, dir)
 	case "drop", "drop_pct":
-		orderBy = "((l.first_price - l.price) / NULLIF(l.first_price, 0)) DESC NULLS LAST"
+		orderBy = "((l.first_price - l.price) / NULLIF(l.first_price, 0)) DESC NULLS LAST, l.id DESC"
 	default:
-		orderBy = fmt.Sprintf("l.last_seen_at %s", dir)
+		orderBy = fmt.Sprintf("l.first_seen_at %s NULLS LAST, l.id %s", dir, dir)
 	}
 
 	query := fmt.Sprintf(`
