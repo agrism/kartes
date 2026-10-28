@@ -1859,5 +1859,263 @@ body:has(.panel) #zoom-ctl {
   transform: scale(1.03);
 }
 
+/* ── SLUDINĀJUMU FILTRI (kadastrakarte.lv dizains) ── */
+.lc-cat-tools {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 4px 4px;
+}
+
+.lc-cat-clear {
+  font: 600 12px/1 'Hanken Grotesk', -apple-system, BlinkMacSystemFont, sans-serif;
+  color: #c34b38;
+  cursor: pointer;
+  letter-spacing: 0;
+  text-transform: none;
+  background: none;
+  border: 0;
+  padding: 4px 6px;
+  border-radius: 6px;
+  transition: opacity 0.15s;
+}
+
+.lc-cat-clear:hover {
+  text-decoration: underline;
+  opacity: 0.85;
+}
+
+.lc-seg {
+  display: flex;
+  gap: 3px;
+  background: #f1ece1;
+  border-radius: 10px;
+  padding: 3px;
+  margin-top: 10px;
+  margin-bottom: 8px;
+}
+
+.lc-seg-b {
+  flex: 1;
+  font: 600 12.5px/1 'Hanken Grotesk', -apple-system, BlinkMacSystemFont, sans-serif;
+  color: #7a7259;
+  background: none;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 4px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+}
+
+.lc-seg-b.on {
+  background: #2f8a55;
+  color: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+.lc-seg-b:not(.on):hover {
+  color: #3a352e;
+}
+
+.lf-cats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-bottom: 8px;
+}
+
+.lc-chip {
+  font: 600 11.5px/1 'Hanken Grotesk', -apple-system, BlinkMacSystemFont, sans-serif;
+  color: #6a6255;
+  background: #f4eee1;
+  border: 1.5px solid #e6dcc8;
+  border-radius: 999px;
+  padding: 6px 11px;
+  cursor: pointer;
+  transition: all 0.13s;
+  user-select: none;
+}
+
+.lc-chip:hover {
+  border-color: #c9bda2;
+}
+
+.lc-chip.on {
+  background: #e7f3ea;
+  border-color: #2f8a55;
+  color: #1f6b3a;
+}
+
+.lst-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+  padding-top: 10px;
+  border-top: 1px solid #ece3d0;
+}
+
+.lf-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: 600 12px/1 'Hanken Grotesk', -apple-system, BlinkMacSystemFont, sans-serif;
+  color: #3d3322;
+  background: #fff;
+  border: 1.5px solid #e0d6c4;
+  border-radius: 9px;
+  padding: 7px 11px;
+  cursor: pointer;
+  transition: border-color 0.13s, background 0.13s, color 0.13s;
+}
+
+.lf-btn:hover {
+  border-color: #c9bda2;
+}
+
+.lf-btn.on {
+  border-color: #2f8a55;
+  background: #e7f3ea;
+  color: #1f6b3a;
+}
+
+.lf-btn-cnt {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  border-radius: 9px;
+  background: #2f8a55;
+  color: #fff;
+  font: 700 10.5px/1 'IBM Plex Mono', monospace;
+}
+
+.lst-cnt {
+  font: 600 11.5px/1 'Hanken Grotesk', -apple-system, BlinkMacSystemFont, sans-serif;
+  color: #8a8172;
+  white-space: nowrap;
+}
+
+.lf-panel {
+  border-top: 1px solid #f0e9db;
+  padding: 12px 2px 4px;
+  margin-top: 10px;
+}
+
+.lf-row {
+  margin-bottom: 11px;
+}
+
+.lf-row-lbl {
+  font: 700 10.5px/1 'Hanken Grotesk', -apple-system, BlinkMacSystemFont, sans-serif;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: #b3a892;
+  margin: 0 2px 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.lf-range {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr 18px;
+  align-items: center;
+  gap: 7px;
+}
+
+.lf-range input {
+  min-width: 0;
+  width: 100%;
+  font: 600 12px/1 'IBM Plex Mono', monospace;
+  color: #3d3322;
+  padding: 8px 9px;
+  border: 1px solid #e0d6c4;
+  border-radius: 8px;
+  background: #fff;
+  outline: none;
+  box-sizing: border-box;
+  -moz-appearance: textfield;
+}
+
+.lf-range input::-webkit-outer-spin-button,
+.lf-range input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.lf-range input:focus {
+  border-color: #2f8a55;
+}
+
+.lf-range input::placeholder {
+  color: #c9bda2;
+  font-weight: 500;
+}
+
+.lf-range select {
+  min-width: 0;
+  width: 100%;
+  cursor: pointer;
+  font: 600 12px/1 'IBM Plex Mono', monospace;
+  color: #3d3322;
+  padding: 8px 9px;
+  border: 1px solid #e0d6c4;
+  border-radius: 8px;
+  background: #fff;
+  outline: none;
+  box-sizing: border-box;
+  appearance: none;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23b3a892' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  padding-right: 24px;
+}
+
+.lf-range select:focus {
+  border-color: #2f8a55;
+}
+
+.lf-dash {
+  color: #c2b7a3;
+  font-size: 12px;
+  text-align: center;
+}
+
+.lf-unit {
+  font: 600 11px/1 'IBM Plex Mono', monospace;
+  color: #a3987f;
+}
+
+.lf-check {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+  user-select: none;
+  font: 500 12px/1 'Hanken Grotesk', -apple-system, BlinkMacSystemFont, sans-serif;
+  color: #5d5546;
+  padding: 2px 2px 0;
+}
+
+.lf-check input {
+  width: 15px;
+  height: 15px;
+  accent-color: #2f8a55;
+  cursor: pointer;
+}
+
+.lf-note {
+  font: 500 10.5px/1.45 'Hanken Grotesk', -apple-system, BlinkMacSystemFont, sans-serif;
+  color: #a3987f;
+  background: #faf6ec;
+  border-radius: 7px;
+  padding: 7px 9px;
+  margin: 0 0 10px;
+}
+
+
 
 

@@ -1,5 +1,31 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import maplibregl from 'maplibre-gl';
+
+const LISTING_CATS = [
+  { key: 'flats', name: 'Dzīvokļi' },
+  { key: 'houses', name: 'Mājas' },
+  { key: 'land', name: 'Zeme' },
+  { key: 'commercial', name: 'Komerc' },
+  { key: 'forest', name: 'Mežs' },
+  { key: 'farms', name: 'Lauku īp.' },
+  { key: 'garage', name: 'Garāža' },
+];
+
+const LF_ROOMS = [1, 2, 3, 4, 5, 6];
+const LF_FLOORS = Array.from({ length: 16 }, (_, i) => i + 1);
+
+const normalizeCategory = (cat: string): string => {
+  if (!cat) return '';
+  const c = String(cat).toLowerCase();
+  if (c === 'flats' || c === 'apartment' || c === 'dzivokli') return 'flats';
+  if (c === 'houses' || c === 'house' || c === 'homes-summer-residences' || c === 'majas') return 'houses';
+  if (c === 'land' || c === 'plots-and-lands' || c === 'zeme') return 'land';
+  if (c === 'commercial' || c === 'premises' || c === 'offices' || c === 'komerc') return 'commercial';
+  if (c === 'forest' || c === 'wood' || c === 'mezs') return 'forest';
+  if (c === 'farms' || c === 'farms-estates' || c === 'lauku-ipasumi') return 'farms';
+  if (c === 'garage' || c === 'garages' || c === 'garaza') return 'garage';
+  return c;
+};
 
 interface EnergyCertInfo {
   class: string;
@@ -201,6 +227,121 @@ export default function App() {
   showAuctionsRef.current = showAuctions;
   const updateMixMarkersRef = useRef<() => void>(() => {});
   const syncMixPointsRef = useRef<() => void>(() => {});
+
+  // Sludinājumu filtri (kadastrakarte.lv dizains)
+  const [listingDeal, setListingDeal] = useState<'all' | 'sell' | 'rent'>('all');
+  const [listingCats, setListingCats] = useState<Set<string>>(new Set());
+  const [isFiltersPanelOpen, setIsFiltersPanelOpen] = useState(false);
+  const [filterPMin, setFilterPMin] = useState<string>('');
+  const [filterPMax, setFilterPMax] = useState<string>('');
+  const [filterAMin, setFilterAMin] = useState<string>('');
+  const [filterAMax, setFilterAMax] = useState<string>('');
+  const [filterRMin, setFilterRMin] = useState<string>('');
+  const [filterRMax, setFilterRMax] = useState<string>('');
+  const [filterFMin, setFilterFMin] = useState<string>('');
+  const [filterFMax, setFilterFMax] = useState<string>('');
+  const [filterNoFirst, setFilterNoFirst] = useState<boolean>(false);
+  const [visibleListingsCount, setVisibleListingsCount] = useState<number>(0);
+
+  const rawListingsRef = useRef<any[]>([]);
+  const rawAuctionsRef = useRef<any[]>([]);
+  const rawTxRef = useRef<any[]>([]);
+  const filteredListingsRef = useRef<any[]>([]);
+  const filteredAuctionsRef = useRef<any[]>([]);
+
+  const listingDealRef = useRef(listingDeal);
+  listingDealRef.current = listingDeal;
+  const listingCatsRef = useRef(listingCats);
+  listingCatsRef.current = listingCats;
+  const filterPMinRef = useRef(filterPMin);
+  filterPMinRef.current = filterPMin;
+  const filterPMaxRef = useRef(filterPMax);
+  filterPMaxRef.current = filterPMax;
+  const filterAMinRef = useRef(filterAMin);
+  filterAMinRef.current = filterAMin;
+  const filterAMaxRef = useRef(filterAMax);
+  filterAMaxRef.current = filterAMax;
+  const filterRMinRef = useRef(filterRMin);
+  filterRMinRef.current = filterRMin;
+  const filterRMaxRef = useRef(filterRMax);
+  filterRMaxRef.current = filterRMax;
+  const filterFMinRef = useRef(filterFMin);
+  filterFMinRef.current = filterFMin;
+  const filterFMaxRef = useRef(filterFMax);
+  filterFMaxRef.current = filterFMax;
+  const filterNoFirstRef = useRef(filterNoFirst);
+  filterNoFirstRef.current = filterNoFirst;
+
+  const applyListingFiltersRef = useRef<() => void>(() => {});
+  const updateViewportCountRef = useRef<() => void>(() => {});
+
+  const showFlatFields = listingCats.size === 0 || listingCats.has('flats');
+  const showRoomsFields = listingCats.size === 0 || listingCats.has('flats') || listingCats.has('houses');
+
+  const activeDetailedFiltersCount = useMemo(() => {
+    let count = 0;
+    if (filterPMin !== '') count++;
+    if (filterPMax !== '') count++;
+    if (filterAMin !== '') count++;
+    if (filterAMax !== '') count++;
+    if (filterRMin !== '') count++;
+    if (filterRMax !== '') count++;
+    if (filterFMin !== '') count++;
+    if (filterFMax !== '') count++;
+    if (filterNoFirst) count++;
+    return count;
+  }, [filterPMin, filterPMax, filterAMin, filterAMax, filterRMin, filterRMax, filterFMin, filterFMax, filterNoFirst]);
+
+  const hasAnyFilter = useMemo(() => {
+    return activeDetailedFiltersCount > 0 || listingCats.size > 0 || listingDeal !== 'all';
+  }, [activeDetailedFiltersCount, listingCats.size, listingDeal]);
+
+  const clearAllListingFilters = () => {
+    setListingDeal('all');
+    setListingCats(new Set());
+    setFilterPMin('');
+    setFilterPMax('');
+    setFilterAMin('');
+    setFilterAMax('');
+    setFilterRMin('');
+    setFilterRMax('');
+    setFilterFMin('');
+    setFilterFMax('');
+    setFilterNoFirst(false);
+  };
+
+  const toggleListingCat = (key: string) => {
+    setListingCats((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    applyListingFiltersRef.current();
+  }, [
+    listingDeal,
+    listingCats,
+    filterPMin,
+    filterPMax,
+    filterAMin,
+    filterAMax,
+    filterRMin,
+    filterRMax,
+    filterFMin,
+    filterFMax,
+    filterNoFirst,
+    showListingsSS,
+    showListingsC24,
+    showListingsPP,
+    showAuctions,
+    showTransactions,
+  ]);
 
   const sludinajumiActive =
     (showListingsSS ? 1 : 0) +
@@ -731,9 +872,40 @@ export default function App() {
       });
 
       // 1. Ātrā sludinājumu, izsoļu un darījumu punktu ielāde (apvieno klasteros un kartē)
-      let listingsFeats: any[] = [];
-      let auctionsFeats: any[] = [];
-      let txFeats: any[] = [];
+      const updateViewportCount = () => {
+        if (!m) return;
+        const bounds = m.getBounds();
+        if (!bounds) return;
+
+        const activePortals = new Set<string>();
+        if (showListingsSSRef.current) { activePortals.add('ss.com'); activePortals.add('ss'); }
+        if (showListingsC24Ref.current) { activePortals.add('city24'); activePortals.add('city24.lv'); }
+        if (showListingsPPRef.current) { activePortals.add('pp.lv'); activePortals.add('pp'); }
+
+        let count = 0;
+        for (const f of filteredListingsRef.current) {
+          if (!activePortals.has(f.properties?.portal || 'ss.com')) continue;
+          const coords = f.geometry?.coordinates;
+          if (coords && bounds.contains([coords[0], coords[1]])) {
+            count++;
+          }
+        }
+
+        if (showAuctionsRef.current) {
+          for (const f of filteredAuctionsRef.current) {
+            const coords = f.geometry?.coordinates;
+            if (coords && bounds.contains([coords[0], coords[1]])) {
+              count++;
+            }
+          }
+        }
+
+        setVisibleListingsCount(count);
+      };
+      updateViewportCountRef.current = updateViewportCount;
+
+      m.on('moveend', updateViewportCount);
+      m.on('zoomend', updateViewportCount);
 
       const syncMixPoints = () => {
         const src = m.getSource('mix-pts') as maplibregl.GeoJSONSource | undefined;
@@ -743,9 +915,9 @@ export default function App() {
           if (showListingsC24Ref.current) { activePortals.add('city24'); activePortals.add('city24.lv'); }
           if (showListingsPPRef.current) { activePortals.add('pp.lv'); activePortals.add('pp'); }
 
-          const activeListings = listingsFeats.filter((f) => activePortals.has(f.properties?.portal || 'ss.com'));
-          const activeAuctions = showAuctionsRef.current ? auctionsFeats : [];
-          const activeTx = showTransactionsRef.current ? txFeats : [];
+          const activeListings = filteredListingsRef.current.filter((f) => activePortals.has(f.properties?.portal || 'ss.com'));
+          const activeAuctions = showAuctionsRef.current ? filteredAuctionsRef.current : [];
+          const activeTx = showTransactionsRef.current ? rawTxRef.current : [];
 
           src.setData({
             type: 'FeatureCollection',
@@ -756,6 +928,84 @@ export default function App() {
       };
       syncMixPointsRef.current = syncMixPoints;
 
+      const applyListingFilters = () => {
+        if (!m) return;
+        const currentDeal = listingDealRef.current;
+        const currentCats = listingCatsRef.current;
+        const pMin = filterPMinRef.current !== '' ? Number(filterPMinRef.current) : null;
+        const pMax = filterPMaxRef.current !== '' ? Number(filterPMaxRef.current) : null;
+        const aMin = filterAMinRef.current !== '' ? Number(filterAMinRef.current) : null;
+        const aMax = filterAMaxRef.current !== '' ? Number(filterAMaxRef.current) : null;
+        const rMin = filterRMinRef.current !== '' ? Number(filterRMinRef.current) : null;
+        const rMax = filterRMaxRef.current !== '' ? Number(filterRMaxRef.current) : null;
+        const fMin = filterFMinRef.current !== '' ? Number(filterFMinRef.current) : null;
+        const fMax = filterFMaxRef.current !== '' ? Number(filterFMaxRef.current) : null;
+        const noFirst = filterNoFirstRef.current;
+
+        const hasRooms = currentCats.size === 0 || currentCats.has('flats') || currentCats.has('houses');
+        const hasFloor = currentCats.size === 0 || currentCats.has('flats');
+
+        const filteredL = rawListingsRef.current.filter((f) => {
+          const props = f.properties || {};
+          if (currentDeal !== 'all' && props.deal_type !== currentDeal) return false;
+          if (currentCats.size > 0) {
+            const normCat = normalizeCategory(props.category);
+            if (!currentCats.has(normCat)) return false;
+          }
+          const price = Number(props.price) || 0;
+          if (pMin !== null && price < pMin) return false;
+          if (pMax !== null && price > pMax) return false;
+
+          const area = Number(props.area || props.area_m2) || 0;
+          if (aMin !== null && area < aMin) return false;
+          if (aMax !== null && area > aMax) return false;
+
+          if (hasRooms) {
+            const rooms = Number(props.rooms) || 0;
+            if (rMin !== null && rooms < rMin) return false;
+            if (rMax !== null && rooms > rMax) return false;
+          }
+
+          if (hasFloor) {
+            const floor = parseInt(String(props.floor), 10) || 0;
+            if (fMin !== null && floor < fMin) return false;
+            if (fMax !== null && floor > fMax) return false;
+            if (noFirst && floor <= 1) return false;
+          }
+
+          return true;
+        });
+
+        // Izsoles (auctions)
+        let filteredA: any[] = [];
+        const aucExcluded = currentDeal === 'rent' || currentCats.size > 0 || aMin !== null || aMax !== null || (hasRooms && (rMin !== null || rMax !== null)) || (hasFloor && (fMin !== null || fMax !== null || noFirst));
+        if (!aucExcluded) {
+          filteredA = rawAuctionsRef.current.filter((f) => {
+            const price = Number(f.properties?.current_bid || f.properties?.price_start || f.properties?.price) || 0;
+            if (pMin !== null && price < pMin) return false;
+            if (pMax !== null && price > pMax) return false;
+            return true;
+          });
+        }
+
+        filteredListingsRef.current = filteredL;
+        filteredAuctionsRef.current = filteredA;
+
+        const lSrc = m.getSource('listings-pts') as maplibregl.GeoJSONSource | undefined;
+        if (lSrc) {
+          lSrc.setData({ type: 'FeatureCollection', features: filteredL });
+        }
+
+        const aSrc = m.getSource('auctions-pts') as maplibregl.GeoJSONSource | undefined;
+        if (aSrc) {
+          aSrc.setData({ type: 'FeatureCollection', features: filteredA });
+        }
+
+        syncMixPoints();
+        updateViewportCount();
+      };
+      applyListingFiltersRef.current = applyListingFilters;
+
       fetch(`${API_BASE}/api/listings?limit=30000`)
         .then((r) => {
           if (!r.ok) throw new Error('API listings offline');
@@ -763,7 +1013,7 @@ export default function App() {
         })
         .then((data) => {
           if (!data || !Array.isArray(data.features)) return;
-          listingsFeats = data.features.map((f: any) => {
+          rawListingsRef.current = data.features.map((f: any) => {
             const p = Number(f.properties?.price) || 0;
             const portal = f.properties?.portal || 'ss.com';
             return {
@@ -778,11 +1028,7 @@ export default function App() {
               },
             };
           });
-          const lSrc = m.getSource('listings-pts') as maplibregl.GeoJSONSource | undefined;
-          if (lSrc) {
-            lSrc.setData({ type: 'FeatureCollection', features: listingsFeats });
-          }
-          syncMixPoints();
+          applyListingFilters();
         })
         .catch(() => {
           // Rezerves ielāde no lokālā keša, ja API vēl nav gatavs
@@ -790,7 +1036,7 @@ export default function App() {
             .then((r) => r.json())
             .then((listingsData) => {
               if (!Array.isArray(listingsData)) return;
-              listingsFeats = listingsData.map((item: any) => {
+              rawListingsRef.current = listingsData.map((item: any) => {
                 const pId = item[2] >> 1;
                 const portal = pId === 1 ? 'city24' : pId === 2 ? 'pp.lv' : 'ss.com';
                 const dealType = (item[2] & 1) === 1 ? 'rent' : 'sell';
@@ -806,11 +1052,7 @@ export default function App() {
                   },
                 };
               });
-              const lSrc = m.getSource('listings-pts') as maplibregl.GeoJSONSource | undefined;
-              if (lSrc) {
-                lSrc.setData({ type: 'FeatureCollection', features: listingsFeats });
-              }
-              syncMixPoints();
+              applyListingFilters();
             })
             .catch(() => {});
         });
@@ -820,7 +1062,7 @@ export default function App() {
         .then((r) => r.json())
         .then((aucData) => {
           if (!aucData || !Array.isArray(aucData.features)) return;
-          auctionsFeats = aucData.features.map((f: any) => {
+          rawAuctionsRef.current = aucData.features.map((f: any) => {
             const price = Number(f.properties?.current_bid || f.properties?.price_start || f.properties?.price) || 0;
             return {
               ...f,
@@ -834,11 +1076,7 @@ export default function App() {
               },
             };
           });
-          const aucSrc = m.getSource('auctions-pts') as maplibregl.GeoJSONSource | undefined;
-          if (aucSrc) {
-            aucSrc.setData({ type: 'FeatureCollection', features: auctionsFeats });
-          }
-          syncMixPoints();
+          applyListingFilters();
         })
         .catch(() => {});
 
@@ -860,7 +1098,7 @@ export default function App() {
               properties: { l: 0, t: 1, color: '#7b1fa2' },
             });
           }
-          txFeats = loadedTx;
+          rawTxRef.current = loadedTx;
           syncMixPoints();
         })
         .catch(() => {});
@@ -2367,6 +2605,22 @@ export default function App() {
                       </span>
                     </button>
                     <div className="lc-layers">
+                      {/* Dzēst filtrus (redzams tikai tad, ja kāds filtrs ir ieslēgts) */}
+                      {hasAnyFilter && (
+                        <div className="lc-cat-tools">
+                          <button
+                            type="button"
+                            className="lc-cat-clear"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              clearAllListingFilters();
+                            }}
+                          >
+                            Dzēst filtrus
+                          </button>
+                        </div>
+                      )}
+
                       {/* ss.com */}
                       <div className={`lc-row ${showListingsSS ? 'on' : ''}`} onClick={(e) => { e.stopPropagation(); setShowListingsSS(!showListingsSS); }}>
                         <div className="lc-swatch" style={{ background: '#2f8a55' }} />
@@ -2402,6 +2656,219 @@ export default function App() {
                           <div className="lc-tog-k" />
                         </button>
                       </div>
+
+                      {/* Segmentētā poga: Visi | Pārdod | Izīrē */}
+                      <div className="lc-seg">
+                        <button
+                          type="button"
+                          className={`lc-seg-b ${listingDeal === 'all' ? 'on' : ''}`}
+                          onClick={(e) => { e.stopPropagation(); setListingDeal('all'); }}
+                        >
+                          Visi
+                        </button>
+                        <button
+                          type="button"
+                          className={`lc-seg-b ${listingDeal === 'sell' ? 'on' : ''}`}
+                          onClick={(e) => { e.stopPropagation(); setListingDeal('sell'); }}
+                        >
+                          Pārdod
+                        </button>
+                        <button
+                          type="button"
+                          className={`lc-seg-b ${listingDeal === 'rent' ? 'on' : ''}`}
+                          onClick={(e) => { e.stopPropagation(); setListingDeal('rent'); }}
+                        >
+                          Izīrē
+                        </button>
+                      </div>
+
+                      {/* Kategoriju čipi */}
+                      <div className="lf-cats">
+                        {LISTING_CATS.map((cat) => (
+                          <button
+                            key={cat.key}
+                            type="button"
+                            className={`lc-chip ${listingCats.has(cat.key) ? 'on' : ''}`}
+                            onClick={(e) => { e.stopPropagation(); toggleListingCat(cat.key); }}
+                          >
+                            {cat.name}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Filtri poga un atrasto skaits šajā skatā */}
+                      <div className="lst-foot">
+                        <button
+                          type="button"
+                          className={`lf-btn ${isFiltersPanelOpen || activeDetailedFiltersCount > 0 ? 'on' : ''}`}
+                          onClick={(e) => { e.stopPropagation(); setIsFiltersPanelOpen(!isFiltersPanelOpen); }}
+                        >
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+                            <line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/>
+                            <circle cx="9" cy="7" r="2.3" fill="#fff"/><circle cx="15" cy="12" r="2.3" fill="#fff"/><circle cx="8" cy="17" r="2.3" fill="#fff"/>
+                          </svg>
+                          Filtri
+                          {activeDetailedFiltersCount > 0 && (
+                            <span className="lf-btn-cnt">{activeDetailedFiltersCount}</span>
+                          )}
+                        </button>
+                        <span className="lst-cnt">
+                          {visibleListingsCount} šajā skatā
+                        </span>
+                      </div>
+
+                      {/* Detalizētais filtru panelis */}
+                      {isFiltersPanelOpen && (
+                        <div className="lf-panel" onClick={(e) => e.stopPropagation()}>
+                          {/* CENA */}
+                          <div className="lf-row">
+                            <div className="lf-row-lbl">Cena</div>
+                            <div className="lf-range">
+                              <input
+                                type="number"
+                                inputMode="numeric"
+                                min="0"
+                                placeholder="no"
+                                value={filterPMin}
+                                onChange={(e) => setFilterPMin(e.target.value)}
+                              />
+                              <span className="lf-dash">–</span>
+                              <input
+                                type="number"
+                                inputMode="numeric"
+                                min="0"
+                                placeholder="līdz"
+                                value={filterPMax}
+                                onChange={(e) => setFilterPMax(e.target.value)}
+                              />
+                              <span className="lf-unit">€</span>
+                            </div>
+                          </div>
+
+                          {/* PLATĪBA */}
+                          <div className="lf-row">
+                            <div className="lf-row-lbl">Platība</div>
+                            <div className="lf-range">
+                              <input
+                                type="number"
+                                inputMode="numeric"
+                                min="0"
+                                placeholder="no"
+                                value={filterAMin}
+                                onChange={(e) => setFilterAMin(e.target.value)}
+                              />
+                              <span className="lf-dash">–</span>
+                              <input
+                                type="number"
+                                inputMode="numeric"
+                                min="0"
+                                placeholder="līdz"
+                                value={filterAMax}
+                                onChange={(e) => setFilterAMax(e.target.value)}
+                              />
+                              <span className="lf-unit">m²</span>
+                            </div>
+                          </div>
+
+                          {/* ISTABAS */}
+                          {showRoomsFields && (
+                            <div className="lf-row">
+                              <div className="lf-row-lbl">Istabas</div>
+                              <div className="lf-range">
+                                <select
+                                  value={filterRMin}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    setFilterRMin(val);
+                                    if (val && filterRMax && Number(val) > Number(filterRMax)) {
+                                      setFilterRMax('');
+                                    }
+                                  }}
+                                >
+                                  <option value="">no</option>
+                                  {LF_ROOMS.map((r) => (
+                                    <option key={r} value={r}>{r}</option>
+                                  ))}
+                                </select>
+                                <span className="lf-dash">–</span>
+                                <select
+                                  value={filterRMax}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    setFilterRMax(val);
+                                    if (val && filterRMin && Number(filterRMin) > Number(val)) {
+                                      setFilterRMin('');
+                                    }
+                                  }}
+                                >
+                                  <option value="">līdz</option>
+                                  {LF_ROOMS.map((r) => (
+                                    <option key={r} value={r}>{r}</option>
+                                  ))}
+                                </select>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* STĀVS UN NE PIRMAIS STĀVS */}
+                          {showFlatFields && (
+                            <>
+                              <div className="lf-row">
+                                <div className="lf-row-lbl">Stāvs</div>
+                                <div className="lf-range">
+                                  <select
+                                    value={filterFMin}
+                                    onChange={(e) => {
+                                      const val = e.target.value;
+                                      setFilterFMin(val);
+                                      if (val && Number(val) >= 2) {
+                                        setFilterNoFirst(true);
+                                      } else if (val === '' || Number(val) === 1) {
+                                        setFilterNoFirst(false);
+                                      }
+                                      if (val && filterFMax && Number(val) > Number(filterFMax)) {
+                                        setFilterFMax('');
+                                      }
+                                    }}
+                                  >
+                                    <option value="">no</option>
+                                    {LF_FLOORS.map((f) => (
+                                      <option key={f} value={f}>{f}</option>
+                                    ))}
+                                  </select>
+                                  <span className="lf-dash">–</span>
+                                  <select
+                                    value={filterFMax}
+                                    onChange={(e) => {
+                                      const val = e.target.value;
+                                      setFilterFMax(val);
+                                      if (val && filterFMin && Number(filterFMin) > Number(val)) {
+                                        setFilterFMin('');
+                                      }
+                                    }}
+                                  >
+                                    <option value="">līdz</option>
+                                    {LF_FLOORS.map((f) => (
+                                      <option key={f} value={f}>{f}</option>
+                                    ))}
+                                  </select>
+                                </div>
+                              </div>
+
+                              <div className="lf-row" style={{ marginTop: '-4px' }}>
+                                <label className="lf-check">
+                                  <input
+                                    type="checkbox"
+                                    checked={filterNoFirst}
+                                    onChange={(e) => setFilterNoFirst(e.target.checked)}
+                                  />
+                                  Ne pirmais stāvs
+                                </label>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
 
