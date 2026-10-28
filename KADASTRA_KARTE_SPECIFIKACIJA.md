@@ -1,7 +1,12 @@
 # Tehniska un Funkcionāla Specifikācija: Latvijas Kadastra un Nekustamo Īpašumu Kartes Platforma
 
-> **Mērķis:** Izveidot neatkarīgu, modernu un mērogojamu nekustamo īpašumu un ģeotelpisko datu platformu (līdzīgi kā `kadastrakarte.lv`), kas vienuviet apvieno kadastra datus, vēsturiskos darījumus, tirgus sludinājumus, teritorijas plānojumu, būvniecības procesus un vides riskus.
-> **Statuss:** Izpētes un specifikācijas fāze (bez tūlītējas programmēšanas).
+> **Mērķis:** Izveidot pilnīgi neatkarīgu, modernu un mērogojamu nekustamo īpašumu un ģeotelpisko datu platformu, kas vienuviet apvieno kadastra datus, vēsturiskos darījumus, tirgus sludinājumus, teritorijas plānojumu, būvniecības procesus un vides riskus.
+>
+> [!IMPORTANT]
+> **Datu Neatkarības Pamatprincips:**
+> `kadastrakarte.lv` projektā kalpo **TIKAI kā vizuālais un funkcionālais etalons/paraugs** (UI/UX paraugs un arhitektūras reversās inženierijas atsauce).
+> **Visiem datiem ražošanā (production) obligāti jānāk no primārajiem ārējiem valsts atvērtajiem avotiem (VZD, VMD, TAPIS, BIS, LVĢMC, DAP, BVKB u.c.) un mūsu pašu sludinājumu robotiem (scrapers).**
+> Jebkādi pagaidu starpniekserveri (proxy / static snapshots) no `kadastrakarte.lv` tiek pakāpeniski aizstāti ar mūsu pašu datubāzes ETL cauruļvadiem (skatīt 1.3. sadaļu).
 
 ---
 
@@ -24,6 +29,22 @@ Veicot vietnes padziļinātu analīzi, tika atklāta tās patiesā iekšējā uz
 - **Vektoru flīžu serveris:** **Martin** (Rust bāzēts MVT serveris). Tā konfigurācija eksponē **49 vektoru slāņus** tieši no PostgreSQL/PostGIS tabulām un materializētajiem skatiem caur URL formātu: `/tiles/{table_or_view}/{z}/{x}/{y}`.
 - **API slānis:** PHP skripti ar JSON atbildēm (piemēram, `/api/parcel-info.php`, `/api/building-info.php`, `/api/deals-geojson.php`, `/api/popup-signals.php`).
 - **Kešošana:** Cloudflare CDN priekšplānā vektoru flīžu un statisko resursu ātrai piegādei.
+
+### 1.3. Pašreizējais Datu Avotu Audits (Mūsu Dati vs Pagaidu Parauga Dati)
+
+| Komponente / Slānis | Pašreizējais Avots | Primārais Ārējais Avots (Nākotnes Mērķis) | Statuss |
+| :--- | :--- | :--- | :--- |
+| **Bāzes karte** | OpenFreeMap Positron | OpenFreeMap / OSM | ✅ 100% Neatkarīgs |
+| **Satelīta aerofoto** | Esri World Imagery | Esri / LĢIA Ortofoto WMTS | ✅ 100% Neatkarīgs |
+| **Rīgas zemes vienības & būves** | Mūsu PostGIS DB (`kartes-db`) | VZD Kadastra atvērtie dati (`data.gov.lv`) | ✅ 100% Neatkarīgs (nepieciešams paplašināt visai LV) |
+| **Adrešu reģistrs** | Mūsu PostGIS DB (`kartes-db`) | VZD Valsts adrešu reģistrs (`data.gov.lv`) | ✅ 100% Neatkarīgs |
+| **Ēku energosertifikāti** | Mūsu Martin (`/tiles/energy_certificates/`) | BVKB atvērtie dati (`data.gov.lv`) | ✅ 100% Neatkarīgs |
+| **Piesārņotās vietas** | Mūsu Martin (`/tiles/pollution_sites/`) | VVD atvērtie dati (`data.gov.lv`) | ✅ 100% Neatkarīgs |
+| **VZD Darījumu vēsture (Rīga)** | Mūsu PostGIS DB (`kartes-db`) | VZD NĪTB atvērtie dati (`data.gov.lv`) | ✅ 100% Neatkarīgs |
+| **Sludinājumu punkti kartē** | Pagaidu fails `web/public/data/listings-pts.json` (no kadastrakarte.lv) | Pašu crawler/skreiperis (ss.com, city24, pp.lv) | ⚠️ Pagaidu paraugs |
+| **Darījumu klasteru punkti (Z < 14)** | Pagaidu fails `web/public/data/tx-pts.json` (no kadastrakarte.lv) | Automātiska ģenerēšana no mūsu `transactions` tabulas | ⚠️ Pagaidu paraugs |
+| **Vektoru flīzes ārpus Rīgas & papildslāņi** | Nginx `proxy_pass` uz `kadastrakarte.lv/tiles/` | Mūsu PostGIS + Martin ar pilnajiem LV datiem | ⚠️ Pagaidu proxy |
+| **API zemes vienības info (ārpus Rīgas)** | Go API fallback uz `kadastrakarte.lv/api/parcel-info.php` | Mūsu Go API ar visas Latvijas kadastra tabulu | ⚠️ Pagaidu fallback |
 
 ---
 
