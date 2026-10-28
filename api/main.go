@@ -53,10 +53,10 @@ func main() {
 	mux := http.NewServeMux()
 
 	// Reģistrē maršrutus
-	mux.HandleFunc("GET /api/health", handleHealth)
-	mux.HandleFunc("GET /api/parcel-info", handleParcelInfo)
-	mux.HandleFunc("GET /api/address-suggest", handleAddressSuggest)
-	mux.HandleFunc("GET /api/transactions", handleTransactions)
+	mux.HandleFunc("/api/health", handleHealth)
+	mux.HandleFunc("/api/parcel-info", handleParcelInfo)
+	mux.HandleFunc("/api/address-suggest", handleAddressSuggest)
+	mux.HandleFunc("/api/transactions", handleTransactions)
 
 	handler := enableCORS(mux)
 
