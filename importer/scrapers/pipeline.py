@@ -160,6 +160,31 @@ class IngestionPipeline:
             row = cur.fetchone()
             return row[0]
 
+    def update_run_progress(
+        self,
+        run_id: int,
+        items_scraped: int,
+        items_saved: int,
+        items_new: int,
+        items_updated: int,
+        price_changes: int,
+        errors_count: int,
+    ):
+        """
+        Periodiski atjauno tekošo progresu datubāzē, kamēr process darbojas
+        """
+        with self.conn.cursor() as cur:
+            cur.execute("""
+                UPDATE scraper_runs SET
+                    items_scraped = %s,
+                    items_saved = %s,
+                    items_new = %s,
+                    items_updated = %s,
+                    price_changes = %s,
+                    errors_count = %s
+                WHERE id = %s;
+            """, (items_scraped, items_saved, items_new, items_updated, price_changes, errors_count, run_id))
+
     def finish_run(
         self,
         run_id: int,

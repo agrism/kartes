@@ -67,6 +67,7 @@ def run_scraper(scraper_name: str, scraper_cls, args, pipeline: IngestionPipelin
                         price_changes += 1
 
                 if processed % 15 == 0 or processed == 1:
+                    pipeline.update_run_progress(run_id, processed, saved, new_items, updated_items, price_changes, errors)
                     print(f"   [{scraper_name}] Apstrādāti: {processed} | Jauni: {new_items} | Atjaunoti: {updated_items} | Cenu izm.: {price_changes} | {item.title[:40] if item.title else item.external_id} ({item.price} €)")
             except Exception as e:
                 errors += 1
