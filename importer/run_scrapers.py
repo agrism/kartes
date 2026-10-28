@@ -15,6 +15,7 @@ from scrapers.ss_com import SSComScraper
 from scrapers.city24 import City24Scraper
 from scrapers.izsoles import IzsolesScraper
 from scrapers.pipeline import IngestionPipeline
+from scrapers.reaper import SmartReaper
 
 AVAILABLE_SCRAPERS = {
     "ss": SSComScraper,
@@ -155,8 +156,27 @@ def main():
     parser.add_argument("--delay", type=float, default=0.3, help="Aizture starp pieprasījumiem sekundēs (noklusējums 0.3s)")
     parser.add_argument("--daemon", action="store_true", help="Darbināt fonā periodiski kā servisu")
     parser.add_argument("--interval", type=int, default=30, help="Intervāls minūtēs daemon režīmā (noklusējums 30 min)")
+    parser.add_argument("--reap", action="store_true", help="Pēc cikla automātiski atslēgt sludinājumus, kas nav redzēti katalogā")
+    parser.add_argument("--smart-reap", action="store_true", help="Palaist Smart Reaper ar HTTP un pirkstu nospieduma (fingerprint) pārbaudi")
+    parser.add_argument("--reap-only", action="store_true", help="Palaist TIKAI reaperi bez jaunu sludinājumu nolasīšanas")
+    parser.add_argument("--reap-days", type=int, default=3, help="Dienu slieksnis neaktīvo atpazīšanai (noklusējums 3 dienas)")
+    parser.add_argument("--reap-limit", type=int, default=150, help="Maksimālais sludinājumu skaits vienā Smart Reaper ciklā")
 
     args = parser.parse_args()
+
+    pipeline = IngestionPipeline()
+
+    # Ja pieprasīts TIKAI reaperis
+    if args.reap_only or (args.smart_reap and not args.source):
+        try:
+            if args.smart_reap:
+                reaper = SmartReaper(pipeline.conn, delay=args.delay)
+                reaper.run_smart_reap(limit=args.reap_limit, older_than_days=args.reap_days)
+            if args.reap or not args.smart_reap:
+                pipeline.mark_stale_inactive(days_threshold=args.reap_days)
+        finally:
+            pipeline.close()
+        return
 
     # Avotu atlase
     if args.source == "all":
@@ -166,12 +186,11 @@ def main():
 
     if not selected_sources:
         print(f"Kļūda: Nav derīgu avotu. Pieejamie: {', '.join(set(AVAILABLE_SCRAPERS.keys()))}")
+        pipeline.close()
         sys.exit(1)
 
     print(f"🗺️ KARTES.KILOGRAMS.LV SLUDINĀJUMU DZINĒJS")
     print(f"Avoti: {', '.join(selected_sources)} | Režīms: {args.mode}")
-
-    pipeline = IngestionPipeline()
 
     try:
         while True:
@@ -183,6 +202,16 @@ def main():
                 results.append(res)
 
             print_summary_report(results)
+
+            # Neaktīvo sludinājumu atslēgšana pēc cikla
+            if args.reap:
+                print(f"🧹 Izpilda kataloga neaktīvo sludinājumu apstrādi (> {args.reap_days} dienas)...")
+                pipeline.mark_stale_inactive(days_threshold=args.reap_days)
+
+            if args.smart_reap:
+                print(f"🔍 Izpilda Smart Reaper padziļināto pārbaudi (limits: {args.reap_limit})...")
+                reaper = SmartReaper(pipeline.conn, delay=args.delay)
+                reaper.run_smart_reap(limit=args.reap_limit, older_than_days=args.reap_days)
 
             if not args.daemon:
                 break

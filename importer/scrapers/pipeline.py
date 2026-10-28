@@ -43,15 +43,35 @@ class IngestionPipeline:
 
             # 3. Pārbauda, vai sludinājums jau eksistē
             cur.execute("""
-                SELECT id, price, first_price, days_on_market, first_seen_at
+                SELECT id, price, first_price, days_on_market, first_seen_at, address_text, area_m2, category, deal_type, rooms
                 FROM listings
                 WHERE source = %s AND external_id = %s
             """, (item.source, item.external_id))
             row = cur.fetchone()
 
             if row:
-                # Eksistējošs sludinājums - pārbauda cenu izmaiņas
-                listing_id, old_price, first_price, days_on_market, first_seen_at = row
+                listing_id, old_price, first_price, days_on_market, first_seen_at, old_addr, old_area, old_cat, old_deal, old_rooms = row
+
+                # Pārbauda "pirkstu nospiedumu" (pazīmes): vai tas tiešām ir TAS PATS īpašums, vai arī portāls
+                # šo ID ir pārstrādājis citam objektam (kolīzija)?
+                if not self._is_same_listing(row, item):
+                    # Kolīzija! SS.com ir piešķīris šo ID citam objektam.
+                    # Arhivējam veco sludinājumu, atbrīvojot unikālo external_id atslēgu.
+                    archived_ext_id = f"{item.external_id}_archived_{listing_id}"
+                    cur.execute("""
+                        UPDATE listings SET
+                            external_id = %s,
+                            is_active = false,
+                            closed_at = CURRENT_TIMESTAMP,
+                            updated_at = CURRENT_TIMESTAMP
+                        WHERE id = %s
+                    """, (archived_ext_id, listing_id))
+                    print(f"   ⚠️ ID kolīzija [{item.source}:{item.external_id}]! Vecais {old_addr} ({old_area}m²) arhivēts, tiek veidots jauns ieraksts.")
+                    row = None  # Izraisīs jaunā sludinājuma INSERT zemāk
+
+            if row:
+                # Eksistējošs sludinājums ar sakrītošām pazīmēm - pārbauda cenu izmaiņas
+                listing_id, old_price, first_price, days_on_market, first_seen_at = row[:5]
                 price_changed = False
                 
                 if item.price is not None and old_price is not None and abs(float(item.price) - float(old_price)) > 0.01:
@@ -84,6 +104,7 @@ class IngestionPipeline:
                         last_seen_at = CURRENT_TIMESTAMP,
                         days_on_market = %s,
                         is_active = true,
+                        closed_at = NULL,
                         updated_at = CURRENT_TIMESTAMP
                     WHERE id = %s
                 """, (
@@ -300,3 +321,69 @@ class IngestionPipeline:
         except Exception:
             pass
         return None
+
+    def _is_same_listing(self, existing_row, item: ListingItem) -> bool:
+        """
+        Pārbauda, vai ienākošais sludinājums atbilst esošajam ierakstam pēc fiziskajām pazīmēm.
+        Ja SS.com ir piešķīris veco ID citam sludinājumam (kolīzija), atgriež False.
+        """
+        listing_id, old_price, first_price, days_on_market, first_seen_at, old_addr, old_area, old_cat, old_deal, old_rooms = existing_row
+
+        # 1. Kategorija un darījuma tips
+        if old_cat and item.category and old_cat != item.category:
+            return False
+        if old_deal and item.deal_type and old_deal != item.deal_type:
+            return False
+
+        # 2. Platības pārbaude (ja abiem norādīta un ir virs 10 m2)
+        if old_area is not None and item.area_m2 is not None:
+            try:
+                oa = float(old_area)
+                na = float(item.area_m2)
+                # Ja platības atšķirība ir lielāka par 3 m2 un pārsniedz 15%
+                if oa > 10 and na > 10 and abs(oa - na) > 3.0 and (abs(oa - na) / oa) > 0.15:
+                    return False
+            except (ValueError, TypeError):
+                pass
+
+        # 3. Istabu skaits (ja abiem norādīts)
+        if old_rooms is not None and item.rooms is not None:
+            if old_rooms > 0 and item.rooms > 0 and abs(old_rooms - item.rooms) >= 2:
+                return False
+
+        # 4. Adreses pārbaude (ja abiem ir adrese)
+        if old_addr and item.address_text:
+            oa_clean = re.sub(r"[^\w\s]", "", old_addr.lower()).strip()
+            na_clean = re.sub(r"[^\w\s]", "", item.address_text.lower()).strip()
+            oa_words = set(w for w in oa_clean.split() if len(w) > 2)
+            na_words = set(w for w in na_clean.split() if len(w) > 2)
+            # Ja abiem ir vārdi, bet nav neviena kopīga vārda (piem., "brīvības" vs "dzelzavas")
+            if oa_words and na_words and not (oa_words & na_words):
+                return False
+
+        return True
+
+    def mark_stale_inactive(self, days_threshold: int = 3, source: Optional[str] = None) -> int:
+        """
+        Atzīmē kā neaktīvus sludinājumus, kas nav manīti aktīvajā katalogā vairāk par days_threshold dienām.
+        """
+        with self.conn.cursor() as cur:
+            query = """
+                UPDATE listings
+                SET is_active = false,
+                    closed_at = CURRENT_TIMESTAMP,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE is_active = true
+                  AND last_seen_at < CURRENT_TIMESTAMP - (%s || ' days')::interval
+            """
+            params = [days_threshold]
+            if source:
+                query += " AND source = %s"
+                params.append(source)
+            query += " RETURNING id;"
+            cur.execute(query, params)
+            closed_rows = cur.fetchall()
+            count = len(closed_rows)
+            if count > 0:
+                print(f"🧹 Kataloga reaperis: atzīmēti kā neaktīvi {count} sludinājumi (nav manīti {days_threshold}+ dienas)")
+            return count

@@ -23,8 +23,8 @@ echo "========================================================================" 
 
 cd "$PROJECT_DIR"
 
-# Palaiž ar timeout aizsardzību
-if timeout "$TIMEOUT_SEC" docker compose run --rm importer run_scrapers.py --source all --mode today 2>&1 | tee -a "$LOG_FILE"; then
+# Palaiž ar timeout aizsardzību un automātisku neaktīvo atslēgšanu (--reap)
+if timeout "$TIMEOUT_SEC" docker compose run --rm importer run_scrapers.py --source all --mode today --reap 2>&1 | tee -a "$LOG_FILE"; then
     EXIT_CODE=0
     echo "========================================================================" | tee -a "$LOG_FILE"
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] ✅ Sinhronizācija sekmīgi pabeigta." | tee -a "$LOG_FILE"

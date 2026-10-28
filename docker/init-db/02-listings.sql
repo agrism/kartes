@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS public.listings (
     last_seen_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     days_on_market INT DEFAULT 1,                       -- Dienas tirgū
     is_active BOOLEAN DEFAULT TRUE,                     -- Vai sludinājums ir aktīvs
+    closed_at TIMESTAMP WITH TIME ZONE,                 -- Datums, kad sludinājums noņemts/beidzies
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT uq_listings_source_external_id UNIQUE (source, external_id)
@@ -42,6 +43,7 @@ CREATE INDEX IF NOT EXISTS idx_listings_geom_3857 ON public.listings USING GIST 
 CREATE INDEX IF NOT EXISTS idx_listings_cadastre ON public.listings (cadastre_code);
 CREATE INDEX IF NOT EXISTS idx_listings_source ON public.listings (source);
 CREATE INDEX IF NOT EXISTS idx_listings_active ON public.listings (is_active) WHERE is_active = TRUE;
+CREATE INDEX IF NOT EXISTS idx_listings_closed_at ON public.listings (closed_at) WHERE closed_at IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_listings_price ON public.listings (price);
 CREATE INDEX IF NOT EXISTS idx_listings_category ON public.listings (category);
 CREATE INDEX IF NOT EXISTS idx_listings_deal_type ON public.listings (deal_type);
