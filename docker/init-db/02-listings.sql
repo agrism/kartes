@@ -9,11 +9,11 @@ CREATE TABLE IF NOT EXISTS public.listings (
     title TEXT,                                         -- Virsraksts / nosaukums
     description TEXT,                                   -- Pilns vai saīsināts apraksts
     url TEXT NOT NULL,                                  -- Tiešā saite uz sludinājumu
-    price NUMERIC(14, 2),                               -- Pašreizējā cena EUR
-    first_price NUMERIC(14, 2),                         -- Sākotnējā cena EUR
+    price NUMERIC(18, 2),                               -- Pašreizējā cena EUR
+    first_price NUMERIC(18, 2),                         -- Sākotnējā cena EUR
     currency VARCHAR(10) DEFAULT 'EUR',
-    price_per_m2 NUMERIC(10, 2),                        -- Cena par m²
-    area_m2 NUMERIC(12, 2),                             -- Platība m²
+    price_per_m2 NUMERIC(14, 2),                        -- Cena par m²
+    area_m2 NUMERIC(18, 2),                             -- Platība m²
     rooms INT,                                          -- Istabu skaits
     floor INT,                                          -- Stāvs
     total_floors INT,                                   -- Kopējais stāvu skaits ēkā
@@ -50,9 +50,9 @@ CREATE TABLE IF NOT EXISTS public.listing_price_changes (
     id BIGSERIAL PRIMARY KEY,
     listing_id BIGINT NOT NULL REFERENCES public.listings(id) ON DELETE CASCADE,
     change_date DATE NOT NULL,
-    old_price NUMERIC(14, 2) NOT NULL,
-    new_price NUMERIC(14, 2) NOT NULL,
-    delta_amount NUMERIC(14, 2) NOT NULL,               -- new_price - old_price (negatīvs, ja samazināta)
+    old_price NUMERIC(18, 2) NOT NULL,
+    new_price NUMERIC(18, 2) NOT NULL,
+    delta_amount NUMERIC(18, 2) NOT NULL,               -- new_price - old_price (negatīvs, ja samazināta)
     delta_percent NUMERIC(12, 2) NOT NULL,              -- procentuālā izmaiņa
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );

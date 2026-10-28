@@ -165,7 +165,7 @@ export default function App() {
   const apkartneActive = (showSchools ? 1 : 0) + (showTransports ? 1 : 0);
   const ekaActive = (showEnergy ? 1 : 0) + (isSatellite ? 1 : 0);
 
-  const [openCats, setOpenCats] = useState<Set<string>>(() => new Set(['darijumi']));
+  const [openCats, setOpenCats] = useState<Set<string>>(() => new Set(['sludinajumi', 'darijumi', 'kadastrs']));
   const toggleCat = (id: string) => {
     setOpenCats((prev) => {
       const next = new Set(prev);
@@ -481,6 +481,11 @@ export default function App() {
         },
       });
 
+      m.on('mouseenter', 'listings-dots', () => { m.getCanvas().style.cursor = 'pointer'; });
+      m.on('mouseleave', 'listings-dots', () => { m.getCanvas().style.cursor = ''; });
+      m.on('mouseenter', 'mix-one', () => { m.getCanvas().style.cursor = 'pointer'; });
+      m.on('mouseleave', 'mix-one', () => { m.getCanvas().style.cursor = ''; });
+
       m.on('render', updateMixMarkers);
       m.on('moveend', updateMixMarkers);
       m.on('idle', updateMixMarkers);
@@ -490,8 +495,21 @@ export default function App() {
         }
       });
 
-      // 1. Ātrā sludinājumu ielāde no Go API (ar pilnām īpašībām un cenu izmaiņām)
-      let allFeats: any[] = [];
+      // 1. Ātrā sludinājumu un darījumu punktu ielāde (apvieno klasteros un kartē)
+      let listingsFeats: any[] = [];
+      let txFeats: any[] = [];
+
+      const syncMixPoints = () => {
+        const src = m.getSource('mix-pts') as maplibregl.GeoJSONSource | undefined;
+        if (src) {
+          src.setData({
+            type: 'FeatureCollection',
+            features: [...listingsFeats, ...txFeats],
+          });
+          updateMixMarkers();
+        }
+      };
+
       fetch(`${API_BASE}/api/listings?limit=25000`)
         .then((r) => {
           if (!r.ok) throw new Error('API listings offline');
@@ -499,18 +517,15 @@ export default function App() {
         })
         .then((data) => {
           if (!data || !Array.isArray(data.features)) return;
-          const lFeats = data.features;
-          allFeats = lFeats.map((f: any) => ({
+          listingsFeats = data.features.map((f: any) => ({
             ...f,
-            properties: { ...f.properties, l: 1, t: 0 },
+            properties: { ...f.properties, l: 1, t: 0, color: '#2f8a55' },
           }));
           const lSrc = m.getSource('listings-pts') as maplibregl.GeoJSONSource | undefined;
-          if (lSrc) lSrc.setData(data);
-
-          const src = m.getSource('mix-pts') as maplibregl.GeoJSONSource | undefined;
-          if (src) {
-            src.setData({ type: 'FeatureCollection', features: allFeats });
+          if (lSrc) {
+            lSrc.setData({ type: 'FeatureCollection', features: listingsFeats });
           }
+          syncMixPoints();
         })
         .catch(() => {
           // Rezerves ielāde no lokālā keša, ja API vēl nav gatavs
@@ -518,23 +533,16 @@ export default function App() {
             .then((r) => r.json())
             .then((listingsData) => {
               if (!Array.isArray(listingsData)) return;
-              const lFeats: any[] = [];
-              for (const item of listingsData) {
-                const f = {
-                  type: 'Feature',
-                  geometry: { type: 'Point', coordinates: [item[0], item[1]] },
-                  properties: { l: 1, t: 0, portal: item[2], type: item[3] },
-                };
-                lFeats.push(f);
-              }
-              allFeats = [...lFeats];
+              listingsFeats = listingsData.map((item: any) => ({
+                type: 'Feature',
+                geometry: { type: 'Point', coordinates: [item[0], item[1]] },
+                properties: { l: 1, t: 0, color: '#2f8a55', portal: item[2] || 'ss.com', type: item[3] },
+              }));
               const lSrc = m.getSource('listings-pts') as maplibregl.GeoJSONSource | undefined;
-              if (lSrc) lSrc.setData({ type: 'FeatureCollection', features: lFeats });
-
-              const src = m.getSource('mix-pts') as maplibregl.GeoJSONSource | undefined;
-              if (src) {
-                src.setData({ type: 'FeatureCollection', features: allFeats });
+              if (lSrc) {
+                lSrc.setData({ type: 'FeatureCollection', features: listingsFeats });
               }
+              syncMixPoints();
             })
             .catch(() => {});
         });
@@ -544,24 +552,21 @@ export default function App() {
         .then((r) => r.json())
         .then((txData) => {
           if (!Array.isArray(txData) || txData.length < 3) return;
-          const txFeats: any[] = [];
+          const loadedTx: any[] = [];
           const n = Math.floor(txData.length / 3);
           let x = 0;
           let y = 0;
           for (let i = 0; i < n; i++) {
             x += txData[3 * i];
             y += txData[3 * i + 1];
-            txFeats.push({
+            loadedTx.push({
               type: 'Feature',
               geometry: { type: 'Point', coordinates: [x / 1e4, y / 1e4] },
-              properties: { l: 0, t: 1 },
+              properties: { l: 0, t: 1, color: '#7b1fa2' },
             });
           }
-          allFeats = allFeats.concat(txFeats);
-          const src = m.getSource('mix-pts') as maplibregl.GeoJSONSource | undefined;
-          if (src) {
-            src.setData({ type: 'FeatureCollection', features: allFeats });
-          }
+          txFeats = loadedTx;
+          syncMixPoints();
         })
         .catch(() => {});
 
@@ -1194,10 +1199,8 @@ export default function App() {
         });
       });
 
-      // Klikšķa apstrāde sludinājumiem (bagātināta kartīte ar foto, dinamiku un reģistru signāliem)
-      m.on('click', 'listings-dots', (e) => {
-        if (!e.features || !e.features[0]) return;
-        const f = e.features[0];
+      // Kopīga funkcija sludinājuma kartītes atvēršanai
+      const openListingPopup = (f: any) => {
         const p = f.properties || {};
         const coords = (f.geometry as GeoJSON.Point).coordinates;
         const lng = coords[0];
@@ -1401,6 +1404,35 @@ export default function App() {
               `;
             }
           });
+      };
+
+      // Klikšķa apstrāde sludinājumiem
+      m.on('click', 'listings-dots', (e) => {
+        if (!e.features || !e.features[0]) return;
+        openListingPopup(e.features[0]);
+      });
+
+      // Klikšķa apstrāde atsevišķiem klasteru punktiem pie z < 14
+      m.on('click', 'mix-one', (e) => {
+        if (!e.features || !e.features[0]) return;
+        const f = e.features[0];
+        if (f.properties?.l === 1) {
+          openListingPopup(f);
+        } else if (f.properties?.t === 1) {
+          const coords = (f.geometry as GeoJSON.Point).coordinates;
+          new maplibregl.Popup({ offset: 12 })
+            .setLngLat([coords[0], coords[1]])
+            .setHTML(`
+              <div style="font-family: 'Hanken Grotesk', -apple-system, sans-serif; font-size: 13px; padding: 4px;">
+                <div style="display:flex; align-items:center; gap:6px; font-weight:700; color:#7b1fa2; margin-bottom:4px;">
+                  <span style="width:10px; height:10px; border-radius:50%; background:#7b1fa2; display:inline-block;"></span>
+                  VZD Darījumu objekts
+                </div>
+                <div style="color:#64748b; font-size:12px;">Pietuviniet karti, lai skatītu kadastra robežas un darījuma summu.</div>
+              </div>
+            `)
+            .addTo(m);
+        }
       });
 
       m.on('click', 'buildings-fill', (e) => {
