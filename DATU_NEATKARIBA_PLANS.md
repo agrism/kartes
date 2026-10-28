@@ -19,9 +19,9 @@
 | **VZD Darījumu vēsture (Rīga)** | Mūsu PostGIS (`kartes-db`) | VZD NĪTB atvērtie dati (`data.gov.lv`) | ✅ 100% Neatkarīgs |
 | **1. Sludinājumu punkti** | `web/public/data/listings-pts.json` | Pašu crawler/skreiperis (ss.com, city24, pp.lv) | ⏳ **Jāveic (1. uzdevums)** |
 | **2. Darījumu tālummaiņas punkti ($Z < 14$)** | `web/public/data/tx-pts.json` | Ģenerēts no mūsu PostGIS `transactions` | ⏳ **Jāveic (2. uzdevums)** |
-| **3. Zemes vienības & būves visā Latvijā** | Hosta Nginx `proxy_pass` uz kadastrakarte.lv | VZD Kadastra dati visai LV mūsu PostGIS | ⏳ **Jāveic (3. uzdevums)** |
+| **3. Zemes vienības & būves visā Latvijā** | Mūsu PostGIS (`kartes-db`) + Martin | VZD Kadastra atvērtie dati (1 055 605 zemes vienības, 1 472 356 ēkas) | ✅ **100% Neatkarīgs** |
 | **4. Valsts plānojuma & risku slāņi** | Hosta Nginx `proxy_pass /tiles/` | PostGIS + Martin (TAPIS, BIS, VMD, LVĢMC, DAP) | ⏳ **Jāveic (4. uzdevums)** |
-| **5. Go API fallback ārpus Rīgas** | `api/main.go` rezerves pieprasījums | Mūsu PostGIS datubāze bez ārējiem fallback | ⏳ **Jāveic (5. uzdevums)** |
+| **5. Go API fallback ārpus Rīgas** | Mūsu PostGIS datubāze | Tieša telpiskā atlase bez ārēja fallback | ✅ **100% Neatkarīgs** |
 
 ---
 
@@ -51,17 +51,21 @@
 
 ---
 
-### 📌 3. Uzdevums: Visas Latvijas Kadastra Datu Ielāde (Ārpus Rīgas)
-- [ ] **3.1. Visu Latvijas reģionu kadastra datu lejupielāde:**
-  - Pašlaik datubāzē ir ielādēts tikai Rīgas kadastrs (`0001000_kk_shp.zip`).
-  - Paplašināt `importer/importer.py`, lai tas secīgi lejupielādē un ielādē visus Latvijas novadu VZD kadastra atvērtos datus no `data.gov.lv`:
-    - Kurzeme, Zemgale, Vidzeme, Latgale, Pierīga.
-- [ ] **3.2. Būvju kontūru pilnais imports:**
-  - Ielādēt visas Latvijas ēku kontūras (`KKBuilding.shp`) un parametru datus no VZD.
-- [ ] **3.3. Telpiskie indeksi un veiktspēja:**
-  - Pārliecināties, ka `parcels` un `buildings` tabulām ir optimizēti `SP-GiST` vai `GIST` indeksi, un izpildīts `VACUUM ANALYZE`.
-- [ ] **3.4. Fallback noņemšana no Go API:**
-  - Failā `api/main.go` dzēst rezerves koda blokus (līnijas 160-180 un 495-515), kas vaicā `kadastrakarte.lv/api/parcel-info.php`.
+### 📌 3. Uzdevums: Visas Latvijas Kadastra Datu Ielāde (Ārpus Rīgas) - ✅ PABEIGTS
+- [x] **3.1. Visu Latvijas reģionu kadastra datu lejupielāde un ielāde:**
+  - Ielādēti visi 42 Latvijas pašvaldību reģioni no VZD atvērtajiem datiem (`data.gov.lv` CKAN pakotne `b28f0eed-73b0-4e44-94e7-b04b11bf0b69`).
+  - Izveidota `public.imported_cadastre_territories` reģistrācijas tabula kļūdu noturībai.
+  - Pagaidu zip faili pēc katra novada apstrādes tiek dzēsti, atstājot diska brīvo vietu > 3.5 GB.
+- [x] **3.2. Būvju kontūru pilnais imports:**
+  - Ielādētas 1 472 356 būvju kontūras (`KKBuilding.shp`) ar sasaisti pie kadastra zemes vienībām un Web Mercator (EPSG:3857) ģeometriju.
+  - Ielādētas 1 055 605 zemes vienības (`KKParcel.shp`) visā Latvijas teritorijā.
+- [x] **3.3. Telpiskie indeksi un veiktspēja:**
+  - `parcels` un `buildings` tabulām izveidoti GIST telpiskie indeksi un B-tree koda indeksi.
+  - Izpildīts `VACUUM ANALYZE public.parcels; VACUUM ANALYZE public.buildings;`.
+  - Hosta Nginx konfigurēts ar tiešu proxy uz lokālo Martin serveri (`/tiles/parcels/` un `/tiles/buildings/`).
+- [x] **3.4. Fallback noņemšana no Go API:**
+  - No `api/main.go` pilnībā izdzēsti rezerves koda bloki (`fetchRemoteParcelInfo`, `fetchRemoteParcelTransactions` un kešošana).
+  - Pievienota dinamiska adrešu telpiskā sasaiste no `public.addresses` gadījumos, kad adrese vēl nav iepriekš piešķirta.
 
 ---
 
