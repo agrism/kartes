@@ -65,6 +65,50 @@ export default function App() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(false);
 
+  // Sludinājuma vēstures un popup stāvoklis
+  const currentPopupRef = useRef<maplibregl.Popup | null>(null);
+  const [historyModal, setHistoryModal] = useState<{
+    open: boolean;
+    item: any;
+    history: any | null;
+    loading: boolean;
+  }>({ open: false, item: null, history: null, loading: false });
+
+  const openHistoryModal = (item: any) => {
+    setHistoryModal({ open: true, item, history: null, loading: true });
+    const mid = item.mid || item.id || '';
+    const portal = item.portal || 'ss.com';
+    fetch(`${API_BASE}/api/listing-history?mid=${mid}&portal=${portal}`)
+      .then((r) => r.json())
+      .then((data) => {
+        setHistoryModal((prev) => ({
+          ...prev,
+          history: data.ok ? data : null,
+          loading: false,
+        }));
+      })
+      .catch(() => {
+        setHistoryModal((prev) => ({ ...prev, loading: false }));
+      });
+  };
+
+  useEffect(() => {
+    (window as any).__openListingHistory = (itemStr: string) => {
+      try {
+        const item = JSON.parse(decodeURIComponent(itemStr));
+        openHistoryModal(item);
+      } catch (err) {}
+    };
+    (window as any).__openParcelReport = (code: string) => {
+      if (code) fetchParcelDetails(code);
+    };
+    (window as any).__closeCurrentPopup = () => {
+      if (currentPopupRef.current) {
+        currentPopupRef.current.remove();
+      }
+    };
+  });
+
   // Slāņu redzamība
   const [showParcels, setShowParcels] = useState(true);
   const [showBuildings, setShowBuildings] = useState(true);
@@ -446,31 +490,54 @@ export default function App() {
         }
       });
 
-      // 1. Ātrā sludinājumu ielāde (tūlītēja klasteru parādīšanās pie jebkura mēroga)
+      // 1. Ātrā sludinājumu ielāde no Go API (ar pilnām īpašībām un cenu izmaiņām)
       let allFeats: any[] = [];
-      fetch('/data/listings-pts.json')
-        .then((r) => r.json())
-        .then((listingsData) => {
-          if (!Array.isArray(listingsData)) return;
-          const lFeats: any[] = [];
-          for (const item of listingsData) {
-            const f = {
-              type: 'Feature',
-              geometry: { type: 'Point', coordinates: [item[0], item[1]] },
-              properties: { l: 1, t: 0, portal: item[2], type: item[3] },
-            };
-            lFeats.push(f);
-          }
-          allFeats = [...lFeats];
+      fetch(`${API_BASE}/api/listings?limit=25000`)
+        .then((r) => {
+          if (!r.ok) throw new Error('API listings offline');
+          return r.json();
+        })
+        .then((data) => {
+          if (!data || !Array.isArray(data.features)) return;
+          const lFeats = data.features;
+          allFeats = lFeats.map((f: any) => ({
+            ...f,
+            properties: { ...f.properties, l: 1, t: 0 },
+          }));
           const lSrc = m.getSource('listings-pts') as maplibregl.GeoJSONSource | undefined;
-          if (lSrc) lSrc.setData({ type: 'FeatureCollection', features: lFeats });
+          if (lSrc) lSrc.setData(data);
 
           const src = m.getSource('mix-pts') as maplibregl.GeoJSONSource | undefined;
           if (src) {
             src.setData({ type: 'FeatureCollection', features: allFeats });
           }
         })
-        .catch(() => {});
+        .catch(() => {
+          // Rezerves ielāde no lokālā keša, ja API vēl nav gatavs
+          fetch('/data/listings-pts.json')
+            .then((r) => r.json())
+            .then((listingsData) => {
+              if (!Array.isArray(listingsData)) return;
+              const lFeats: any[] = [];
+              for (const item of listingsData) {
+                const f = {
+                  type: 'Feature',
+                  geometry: { type: 'Point', coordinates: [item[0], item[1]] },
+                  properties: { l: 1, t: 0, portal: item[2], type: item[3] },
+                };
+                lFeats.push(f);
+              }
+              allFeats = [...lFeats];
+              const lSrc = m.getSource('listings-pts') as maplibregl.GeoJSONSource | undefined;
+              if (lSrc) lSrc.setData({ type: 'FeatureCollection', features: lFeats });
+
+              const src = m.getSource('mix-pts') as maplibregl.GeoJSONSource | undefined;
+              if (src) {
+                src.setData({ type: 'FeatureCollection', features: allFeats });
+              }
+            })
+            .catch(() => {});
+        });
 
       // 2. Fona darījumu punktu ielāde (apvieno ar sludinājumu klasteriem)
       fetch('/data/tx-pts.json')
@@ -1127,20 +1194,213 @@ export default function App() {
         });
       });
 
-      // Klikšķa apstrāde sludinājumiem
+      // Klikšķa apstrāde sludinājumiem (bagātināta kartīte ar foto, dinamiku un reģistru signāliem)
       m.on('click', 'listings-dots', (e) => {
-        new maplibregl.Popup({ offset: 12 })
-          .setLngLat(e.lngLat)
-          .setHTML(`
-            <div style="font-family: 'Hanken Grotesk', -apple-system, sans-serif; font-size: 13px; padding: 4px;">
-              <div style="display:flex; align-items:center; gap:6px; font-weight:700; color:#2f8a55; margin-bottom:4px;">
-                <span style="width:10px; height:10px; border-radius:50%; background:#2f8a55; display:inline-block;"></span>
-                ss.com sludinājums
+        if (!e.features || !e.features[0]) return;
+        const f = e.features[0];
+        const p = f.properties || {};
+        const coords = (f.geometry as GeoJSON.Point).coordinates;
+        const lng = coords[0];
+        const lat = coords[1];
+
+        if (currentPopupRef.current) {
+          currentPopupRef.current.remove();
+        }
+
+        const price = Number(p.price) || 0;
+        const firstPrice = Number(p.first_price) || price;
+        const priceDiff = price - firstPrice;
+        const priceDiffPct = firstPrice > 0 ? Math.round((priceDiff / firstPrice) * 100) : 0;
+        const hasDrop = priceDiff < 0;
+        const ppm2 = Number(p.price_per_m2) || 0;
+        const area = Number(p.area) || 0;
+        const rooms = Number(p.rooms) || 0;
+        const floor = p.floor || '';
+        const series = p.series || '';
+        const portal = p.portal || 'ss.com';
+        const dealType = p.deal_type === 'rent' ? 'rent' : 'sell';
+        const dealLabel = dealType === 'rent' ? 'Izīrē' : 'Pārdod';
+        const address = p.addr || p.address || 'Nekustamais īpašums';
+        const days = Number(p.days || p.days_on_market) || 1;
+        const url = p.url || 'https://www.ss.com/';
+        const cadCode = p.cadastre_code || '';
+        const thumb = p.thumb || '';
+        const itemStr = encodeURIComponent(JSON.stringify({
+          id: p.id,
+          mid: p.mid || p.id,
+          portal,
+          addr: address,
+          price,
+          first_price: firstPrice,
+          days,
+          url,
+          cadastre_code: cadCode,
+        }));
+
+        const popupId = 'lpc-' + (p.id || Math.round(Math.random() * 100000));
+
+        let mediaHtml = '';
+        if (thumb && !thumb.startsWith('/listings/thumbs/')) {
+          mediaHtml = `
+            <div class="lpc-media">
+              <img class="lpc-img" src="${thumb}" alt="${address}" onerror="this.closest('.lpc-media').style.display='none';" />
+              <div class="lpc-deal-tag ${dealType}">
+                <span class="lpc-dot"></span>
+                ${dealLabel}
               </div>
-              <div style="color:#64748b; font-size:12px;">Aktīvs nekustamā īpašuma sludinājums</div>
+              <button class="lpc-close-btn" onclick="window.__closeCurrentPopup()" title="Aizvērt">✕</button>
             </div>
-          `)
+          `;
+        } else {
+          mediaHtml = `
+            <div class="lpc-header-no-img">
+              <div class="lpc-deal-tag ${dealType}">
+                <span class="lpc-dot"></span>
+                ${dealLabel}
+              </div>
+              <button class="lpc-close-btn" onclick="window.__closeCurrentPopup()" title="Aizvērt">✕</button>
+            </div>
+          `;
+        }
+
+        let dropHtml = '';
+        if (hasDrop) {
+          dropHtml = `
+            <div class="lpc-drop-box">
+              <div class="lpc-drop-left">
+                <span class="lpc-drop-lbl">Cenas samazinājums</span>
+                <span class="lpc-drop-amt">${priceDiff.toLocaleString('lv-LV')} € (${priceDiffPct}%)</span>
+                <span class="lpc-drop-calc">Pirmā cena: ${firstPrice.toLocaleString('lv-LV')} €</span>
+              </div>
+              <div class="lpc-drop-right">
+                <div class="lpc-days-val">${days}</div>
+                <div class="lpc-days-lbl">dienas<br/>tirgū</div>
+              </div>
+            </div>
+          `;
+        } else if (days > 1) {
+          dropHtml = `
+            <div class="lpc-drop-box" style="background: #f8fafc; border-color: #e2e8f0;">
+              <div class="lpc-drop-left">
+                <span class="lpc-drop-lbl" style="color: #475569;">Stabila cena</span>
+                <span class="lpc-drop-calc" style="color: #64748b;">Bez izmaiņām no pirmās dienas</span>
+              </div>
+              <div class="lpc-drop-right" style="border-left-color: #e2e8f0;">
+                <div class="lpc-days-val" style="color: #334155;">${days}</div>
+                <div class="lpc-days-lbl" style="color: #64748b;">dienas<br/>tirgū</div>
+              </div>
+            </div>
+          `;
+        }
+
+        const specs = [];
+        if (rooms > 0) specs.push({ val: `${rooms}`, lbl: 'Istabas' });
+        if (area > 0) specs.push({ val: `${Math.round(area)} m²`, lbl: 'Platība' });
+        if (floor) specs.push({ val: `${floor}`, lbl: 'Stāvs' });
+        if (series) specs.push({ val: `${series}`, lbl: 'Sērija' });
+
+        const specsHtml = specs.length > 0 ? `
+          <div class="lpc-specs-row">
+            ${specs.map((s) => `
+              <div class="lpc-spec-box">
+                <span class="lpc-spec-val">${s.val}</span>
+                <span class="lpc-spec-lbl">${s.lbl}</span>
+              </div>
+            `).join('')}
+          </div>
+        ` : '';
+
+        const html = `
+          <div class="listing-popup-card">
+            ${mediaHtml}
+            <div class="lpc-body">
+              <div class="lpc-price-row">
+                <span class="lpc-price">${price.toLocaleString('lv-LV')} €</span>
+                ${ppm2 > 0 ? `<span class="lpc-ppm2">${Math.round(ppm2).toLocaleString('lv-LV')} €/m²</span>` : ''}
+              </div>
+              <div class="lpc-address" title="${address}">${address}</div>
+              ${specsHtml}
+              ${dropHtml}
+              <div class="lpc-actions-row">
+                <button class="lpc-btn" onclick="window.__openListingHistory('${itemStr}')">
+                  📈 Vēsture
+                </button>
+                <a class="lpc-btn lpc-btn-portal" href="${url}" target="_blank" rel="noopener noreferrer">
+                  Atvērt ${portal} ↗
+                </a>
+              </div>
+              <div class="lpc-report-section" id="${popupId}-report">
+                <div class="lpc-report-header">Īpašuma pārbaudes signāli</div>
+                <div id="${popupId}-signals-body" style="font-size: 11px; color: #64748b; text-align: center; padding: 6px;">
+                  Pārbauda valsts reģistrus...
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+
+        const popup = new maplibregl.Popup({
+          offset: 12,
+          className: 'listing-popup-wrapper',
+          maxWidth: '350px',
+        })
+          .setLngLat([lng, lat])
+          .setHTML(html)
           .addTo(m);
+
+        currentPopupRef.current = popup;
+
+        // Dinamiskie signāli no mūsu Go API tieši no PostGIS
+        const sigUrl = `${API_BASE}/api/popup-signals?code=${cadCode}&lng=${lng}&lat=${lat}`;
+        fetch(sigUrl)
+          .then((r) => r.json())
+          .then((sigData) => {
+            const bodyEl = document.getElementById(`${popupId}-signals-body`);
+            if (!bodyEl) return;
+            const signals = sigData.signals || [];
+            const sourcesCount = sigData.sources || 11;
+
+            let sigBoxesHtml = '';
+            if (signals.length > 0) {
+              sigBoxesHtml = `
+                <div class="lpc-report-signals">
+                  ${signals.slice(0, 3).map((s: any) => `
+                    <div class="lpc-sig-item" title="${s.title || ''}">
+                      <span class="lpc-sig-val">${s.n !== undefined ? s.n : (s.median ? s.median + ' €' : '✓')}</span>
+                      <span class="lpc-sig-lbl">${s.title ? s.title.replace(/^\\d+\\s*/, '').slice(0, 16) : s.key}</span>
+                    </div>
+                  `).join('')}
+                </div>
+              `;
+            } else {
+              sigBoxesHtml = `
+                <div style="font-size: 11.5px; color: #166534; font-weight: 600; padding: 4px 0;">
+                  ✓ Pārbaudīti ${sourcesCount} valsts reģistri · Riski nav konstatēti
+                </div>
+              `;
+            }
+
+            bodyEl.innerHTML = `
+              ${sigBoxesHtml}
+              ${cadCode ? `
+                <button class="lpc-btn lpc-btn-report" style="margin-top: 6px;" onclick="window.__openParcelReport('${cadCode}')">
+                  Atvērt kadastra atskaiti (${cadCode}) ➔
+                </button>
+              ` : `
+                <div style="font-size: 10px; color: #94a3b8; margin-top: 4px;">Pārbaudīti ${sourcesCount} valsts avoti</div>
+              `}
+            `;
+          })
+          .catch(() => {
+            const bodyEl = document.getElementById(`${popupId}-signals-body`);
+            if (bodyEl && cadCode) {
+              bodyEl.innerHTML = `
+                <button class="lpc-btn lpc-btn-report" onclick="window.__openParcelReport('${cadCode}')">
+                  Atvērt kadastra atskaiti (${cadCode}) ➔
+                </button>
+              `;
+            }
+          });
       });
 
       m.on('click', 'buildings-fill', (e) => {
@@ -2179,6 +2439,167 @@ export default function App() {
             <line x1="8" y1="11" x2="14" y2="11" />
           </svg>
           <span>Pietuviniet, lai redzētu zemes vienību robežas</span>
+        </div>
+      )}
+
+      {/* Sludinājuma cenu dinamikas un vēstures modālais logs */}
+      {historyModal.open && (
+        <div
+          className="history-modal-overlay"
+          onClick={() => setHistoryModal((prev) => ({ ...prev, open: false }))}
+        >
+          <div
+            className="history-modal-content"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="hm-header">
+              <div className="hm-title-box">
+                <div className="hm-title">Sludinājuma cenu dinamika</div>
+                <div className="hm-sub">
+                  {historyModal.item?.addr || historyModal.history?.meta?.street || 'Nekustamais īpašums'} · {historyModal.item?.portal || historyModal.history?.portal || 'ss.com'}
+                </div>
+              </div>
+              <button
+                className="hm-close-btn"
+                onClick={() => setHistoryModal((prev) => ({ ...prev, open: false }))}
+                title="Aizvērt"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="hm-body">
+              {historyModal.loading ? (
+                <div style={{ textAlign: 'center', padding: '40px 0', color: '#64748b' }}>
+                  <div style={{ fontSize: '18px', fontWeight: 600, marginBottom: '8px' }}>Ielādē sludinājuma vēsturi...</div>
+                  <div style={{ fontSize: '13px' }}>Tiek apstrādāta cenu dinamika un arhīva fotogrāfijas</div>
+                </div>
+              ) : historyModal.history ? (
+                <>
+                  <div className="hm-stats-grid">
+                    <div className="hm-stat-card">
+                      <span className="hm-stat-val">
+                        {(historyModal.history.last_price || historyModal.item?.price || 0).toLocaleString('lv-LV')} €
+                      </span>
+                      <span className="hm-stat-lbl">Pašreizējā cena</span>
+                    </div>
+                    <div className="hm-stat-card">
+                      <span className="hm-stat-val">
+                        {(historyModal.history.first_price || historyModal.item?.first_price || historyModal.history.last_price || 0).toLocaleString('lv-LV')} €
+                      </span>
+                      <span className="hm-stat-lbl">Pirmā cena</span>
+                    </div>
+                    <div className="hm-stat-card">
+                      <span className="hm-stat-val">
+                        {historyModal.history.days || historyModal.item?.days || 1}
+                      </span>
+                      <span className="hm-stat-lbl">Dienas tirgū</span>
+                    </div>
+                    <div className="hm-stat-card">
+                      <span className="hm-stat-val">
+                        {historyModal.history.drops || (historyModal.history.changes ? historyModal.history.changes.length - 1 : 0) || 0}
+                      </span>
+                      <span className="hm-stat-lbl">Cenu izmaiņas</span>
+                    </div>
+                  </div>
+
+                  {historyModal.history.changes && historyModal.history.changes.length > 0 && (
+                    <div className="hm-timeline-section">
+                      <div className="hm-section-title">Cenu izmaiņu hronoloģija</div>
+                      <div className="hm-timeline">
+                        {[...historyModal.history.changes].reverse().map((ch: any, idx: number) => (
+                          <div className="hm-tl-item" key={idx}>
+                            <div className="hm-tl-date">
+                              {ch.date ? new Date(ch.date).toLocaleDateString('lv-LV') : 'Sākotnēji'}
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <span className="hm-tl-price">{ch.price.toLocaleString('lv-LV')} €</span>
+                              {ch.delta !== null && ch.delta !== undefined && ch.delta !== 0 && (
+                                <span className={`hm-tl-badge ${ch.delta < 0 ? 'down' : 'up'}`}>
+                                  {ch.delta > 0 ? '+' : ''}{ch.delta.toLocaleString('lv-LV')} €
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {historyModal.history.images && historyModal.history.images.length > 0 && (
+                    <div className="hm-gallery-section">
+                      <div className="hm-section-title">
+                        Sludinājuma fotogrāfijas ({historyModal.history.images.length})
+                      </div>
+                      <div className="hm-gallery-grid">
+                        {historyModal.history.images.map((imgUrl: string, idx: number) => (
+                          <a
+                            href={imgUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            key={idx}
+                            title="Atvērt pilna izmēra attēlu"
+                          >
+                            <img
+                              className="hm-gal-img"
+                              src={imgUrl}
+                              alt={`Attēls ${idx + 1}`}
+                              loading="lazy"
+                              onError={(e) => {
+                                (e.target as HTMLElement).style.display = 'none';
+                              }}
+                            />
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '10px' }}>
+                    {historyModal.item?.cadastre_code ? (
+                      <button
+                        className="lpc-btn"
+                        style={{ maxWidth: '220px' }}
+                        onClick={() => {
+                          setHistoryModal((prev) => ({ ...prev, open: false }));
+                          fetchParcelDetails(historyModal.item.cadastre_code);
+                        }}
+                      >
+                        Kadastra atskaite ➔
+                      </button>
+                    ) : <span />}
+                    <a
+                      className="lpc-btn lpc-btn-portal"
+                      style={{ maxWidth: '240px' }}
+                      href={historyModal.history.url || historyModal.item?.url || '#'}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      Atvērt {historyModal.item?.portal || 'portālā'} ↗
+                    </a>
+                  </div>
+                </>
+              ) : (
+                <div style={{ textAlign: 'center', padding: '30px 0', color: '#64748b' }}>
+                  <div style={{ fontSize: '16px', fontWeight: 600, marginBottom: '6px' }}>Vēstures dati nav atrasti</div>
+                  <div style={{ fontSize: '13px' }}>Šim sludinājumam vēl nav fiksētas cenu svārstības</div>
+                  {historyModal.item?.url && (
+                    <div style={{ marginTop: '16px' }}>
+                      <a
+                        className="lpc-btn lpc-btn-portal"
+                        style={{ display: 'inline-flex' }}
+                        href={historyModal.item.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        Atvērt sludinājumu {historyModal.item.portal || 'portālā'} ↗
+                      </a>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
