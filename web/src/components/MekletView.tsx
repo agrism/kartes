@@ -35,7 +35,7 @@ export const MekletView: React.FC<MekletViewProps> = ({
   // 3. Filtru stāvoklis
   const [searchQuery, setSearchQuery] = useState('');
   const [town, setTown] = useState('');
-  const [dealType, setDealType] = useState('sell'); // 'sell' | 'rent' | 'all'
+  const [dealType, setDealType] = useState('all'); // 'all' | 'sell' | 'rent'
   const [category, setCategory] = useState('all'); // 'flats' | 'houses' | 'plots' | 'commercial' | 'all'
   const [pmin, setPmin] = useState('');
   const [pmax, setPmax] = useState('');
@@ -394,6 +394,13 @@ export const MekletView: React.FC<MekletViewProps> = ({
               <div className="meklet-seg">
                 <button
                   type="button"
+                  className={dealType === 'all' ? 'on' : ''}
+                  onClick={() => { setDealType('all'); setPage(1); }}
+                >
+                  Visi
+                </button>
+                <button
+                  type="button"
                   className={dealType === 'sell' ? 'on' : ''}
                   onClick={() => { setDealType('sell'); setPage(1); }}
                 >
@@ -405,13 +412,6 @@ export const MekletView: React.FC<MekletViewProps> = ({
                   onClick={() => { setDealType('rent'); setPage(1); }}
                 >
                   Izīrē
-                </button>
-                <button
-                  type="button"
-                  className={dealType === 'all' ? 'on' : ''}
-                  onClick={() => { setDealType('all'); setPage(1); }}
-                >
-                  Visi
                 </button>
               </div>
             </div>
