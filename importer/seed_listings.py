@@ -143,7 +143,7 @@ def seed_initial_listings():
                     url, price, first_price, price_per_m2, area_m2, rooms, floor, total_floors,
                     series, address_text, town, district, images, geom, geom_3857, is_active
                 )
-                SELECT 
+                SELECT DISTINCT ON (s.source, s.external_id)
                     s.source,
                     s.external_id,
                     s.deal_type,
@@ -167,6 +167,7 @@ def seed_initial_listings():
                     ST_Transform(ST_SetSRID(ST_MakePoint(s.lng, s.lat), 4326), 3857),
                     TRUE
                 FROM staging_listings s
+                ORDER BY s.source, s.external_id, s.price DESC NULLS LAST
                 ON CONFLICT (source, external_id) DO UPDATE SET
                     price = EXCLUDED.price,
                     price_per_m2 = EXCLUDED.price_per_m2,
