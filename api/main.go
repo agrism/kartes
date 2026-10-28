@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -57,6 +59,10 @@ func main() {
 	mux.HandleFunc("/api/parcel-info", handleParcelInfo)
 	mux.HandleFunc("/api/address-suggest", handleAddressSuggest)
 	mux.HandleFunc("/api/transactions", handleTransactions)
+	mux.HandleFunc("/api/listings", handleListingsGeoJSON)
+	mux.HandleFunc("/api/listings-geojson", handleListingsGeoJSON)
+	mux.HandleFunc("/api/listing-history", handleListingHistory)
+	mux.HandleFunc("/api/popup-signals", handlePopupSignals)
 
 	handler := enableCORS(mux)
 
@@ -332,3 +338,531 @@ func handleTransactions(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusOK, deals)
 }
+
+// /api/listings vai /api/listings-geojson?portal=ss.com&bbox=20.9,55.6,28.3,58.1
+func handleListingsGeoJSON(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
+	defer cancel()
+
+	bboxStr := r.URL.Query().Get("bbox")
+	portal := r.URL.Query().Get("portal")
+	if portal == "" {
+		portal = r.URL.Query().Get("source")
+	}
+	dealType := r.URL.Query().Get("deal_type")
+	category := r.URL.Query().Get("category")
+
+	whereClauses := []string{"l.is_active = TRUE", "l.geom IS NOT NULL"}
+	args := []any{}
+	argIdx := 1
+
+	if bboxStr != "" {
+		coords := strings.Split(bboxStr, ",")
+		if len(coords) == 4 {
+			minX, _ := strconv.ParseFloat(strings.TrimSpace(coords[0]), 64)
+			minY, _ := strconv.ParseFloat(strings.TrimSpace(coords[1]), 64)
+			maxX, _ := strconv.ParseFloat(strings.TrimSpace(coords[2]), 64)
+			maxY, _ := strconv.ParseFloat(strings.TrimSpace(coords[3]), 64)
+			whereClauses = append(whereClauses, fmt.Sprintf("l.geom && ST_MakeEnvelope($%d, $%d, $%d, $%d, 4326)", argIdx, argIdx+1, argIdx+2, argIdx+3))
+			args = append(args, minX, minY, maxX, maxY)
+			argIdx += 4
+		}
+	}
+
+	if portal != "" && portal != "all" {
+		whereClauses = append(whereClauses, fmt.Sprintf("l.source = $%d", argIdx))
+		args = append(args, portal)
+		argIdx++
+	}
+
+	if dealType != "" {
+		whereClauses = append(whereClauses, fmt.Sprintf("l.deal_type = $%d", argIdx))
+		args = append(args, dealType)
+		argIdx++
+	}
+
+	if category != "" {
+		whereClauses = append(whereClauses, fmt.Sprintf("l.category = $%d", argIdx))
+		args = append(args, category)
+		argIdx++
+	}
+
+	query := fmt.Sprintf(`
+		SELECT 
+			l.id, l.source, l.external_id, l.deal_type, l.category, 
+			COALESCE(l.title, ''), COALESCE(l.url, ''), COALESCE(l.price, 0), 
+			COALESCE(l.first_price, l.price, 0), COALESCE(l.price_per_m2, 0), 
+			COALESCE(l.area_m2, 0), COALESCE(l.rooms, 0), COALESCE(l.floor, 0), 
+			COALESCE(l.total_floors, 0), COALESCE(l.series, ''), COALESCE(l.address_text, ''), 
+			COALESCE(l.town, ''), COALESCE(l.district, ''), l.images, 
+			l.days_on_market, COALESCE(l.cadastre_code, ''),
+			ST_X(l.geom), ST_Y(l.geom)
+		FROM public.listings l
+		WHERE %s
+		ORDER BY l.id DESC
+		LIMIT 20000;
+	`, strings.Join(whereClauses, " AND "))
+
+	rows, err := dbPool.Query(ctx, query, args...)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	type GeoFeature struct {
+		Type       string         `json:"type"`
+		ID         int64          `json:"id"`
+		Geometry   map[string]any `json:"geometry"`
+		Properties map[string]any `json:"properties"`
+	}
+
+	features := make([]GeoFeature, 0)
+	for rows.Next() {
+		var id int64
+		var source, extID, dType, cat, title, u, series, addr, town, dist, cadCode string
+		var price, firstPrice, ppm2, area float64
+		var rooms, floor, totFloors, days int
+		var imagesRaw []byte
+		var lng, lat float64
+
+		if err := rows.Scan(
+			&id, &source, &extID, &dType, &cat,
+			&title, &u, &price,
+			&firstPrice, &ppm2,
+			&area, &rooms, &floor,
+			&totFloors, &series, &addr,
+			&town, &dist, &imagesRaw,
+			&days, &cadCode,
+			&lng, &lat,
+		); err == nil {
+			var images []string
+			if len(imagesRaw) > 0 {
+				_ = json.Unmarshal(imagesRaw, &images)
+			}
+			thumb := ""
+			if len(images) > 0 {
+				thumb = images[0]
+			}
+
+			floorStr := ""
+			if floor > 0 {
+				if totFloors > 0 {
+					floorStr = fmt.Sprintf("%d/%d", floor, totFloors)
+				} else {
+					floorStr = fmt.Sprintf("%d", floor)
+				}
+			}
+
+			hasDrop := firstPrice > price && price > 0
+
+			feat := GeoFeature{
+				Type: "Feature",
+				ID:   id,
+				Geometry: map[string]any{
+					"type":        "Point",
+					"coordinates": []float64{lng, lat},
+				},
+				Properties: map[string]any{
+					"id":             id,
+					"mid":            extID,
+					"portal":         source,
+					"category":       cat,
+					"deal_type":      dType,
+					"snippet":        title,
+					"url":            u,
+					"price":          price,
+					"first_price":    firstPrice,
+					"price_per_m2":   ppm2,
+					"rooms":          rooms,
+					"area":           area,
+					"floor":          floorStr,
+					"series":         series,
+					"addr":           addr,
+					"town":           town,
+					"district":       dist,
+					"thumb":          thumb,
+					"images":         images,
+					"drop":           hasDrop,
+					"days":           days,
+					"days_on_market": days,
+					"cadastre_code":  cadCode,
+				},
+			}
+			features = append(features, feat)
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"type":     "FeatureCollection",
+		"count":    len(features),
+		"features": features,
+	})
+}
+
+// /api/listing-history?mid=55565983&portal=ss.com vai ?id=1365
+func handleListingHistory(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	mid := r.URL.Query().Get("mid")
+	portal := r.URL.Query().Get("portal")
+	if portal == "" {
+		portal = r.URL.Query().Get("source")
+	}
+	if portal == "" {
+		portal = "ss.com"
+	}
+	idStr := r.URL.Query().Get("id")
+
+	var id int64
+	var source, extID, dType, u, sinceDate, addr, town string
+	var price, firstPrice, area float64
+	var days, rooms, floor int
+	var imagesRaw []byte
+
+	var err error
+	if idStr != "" {
+		idVal, _ := strconv.ParseInt(idStr, 10, 64)
+		err = dbPool.QueryRow(ctx, `
+			SELECT 
+				l.id, l.source, l.external_id, l.deal_type, l.url, 
+				COALESCE(l.price, 0), COALESCE(l.first_price, l.price, 0), 
+				l.days_on_market, COALESCE(to_char(l.published_at, 'YYYY-MM-DD'), ''),
+				l.images, COALESCE(l.area_m2, 0), COALESCE(l.rooms, 0), 
+				COALESCE(l.floor, 0), COALESCE(l.address_text, ''), COALESCE(l.town, '')
+			FROM public.listings l
+			WHERE l.id = $1
+			LIMIT 1;
+		`, idVal).Scan(
+			&id, &source, &extID, &dType, &u,
+			&price, &firstPrice, &days, &sinceDate,
+			&imagesRaw, &area, &rooms, &floor, &addr, &town,
+		)
+	} else if mid != "" {
+		err = dbPool.QueryRow(ctx, `
+			SELECT 
+				l.id, l.source, l.external_id, l.deal_type, l.url, 
+				COALESCE(l.price, 0), COALESCE(l.first_price, l.price, 0), 
+				l.days_on_market, COALESCE(to_char(l.published_at, 'YYYY-MM-DD'), ''),
+				l.images, COALESCE(l.area_m2, 0), COALESCE(l.rooms, 0), 
+				COALESCE(l.floor, 0), COALESCE(l.address_text, ''), COALESCE(l.town, '')
+			FROM public.listings l
+			WHERE l.source = $1 AND l.external_id = $2
+			LIMIT 1;
+		`, portal, mid).Scan(
+			&id, &source, &extID, &dType, &u,
+			&price, &firstPrice, &days, &sinceDate,
+			&imagesRaw, &area, &rooms, &floor, &addr, &town,
+		)
+	} else {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "why": "missing_parameters"})
+		return
+	}
+
+	if err != nil {
+		writeJSON(w, http.StatusOK, map[string]any{"ok": false, "has": false, "why": "not_found"})
+		return
+	}
+
+	var images []string
+	if len(imagesRaw) > 0 {
+		_ = json.Unmarshal(imagesRaw, &images)
+	}
+
+	type PriceChangeItem struct {
+		Date  string   `json:"date"`
+		Delta *float64 `json:"delta"`
+		Price float64  `json:"price"`
+	}
+
+	changes := make([]PriceChangeItem, 0)
+	cRows, cErr := dbPool.Query(ctx, `
+		SELECT to_char(change_date, 'YYYY-MM-DD'), old_price, new_price, delta_amount
+		FROM public.listing_price_changes
+		WHERE listing_id = $1
+		ORDER BY change_date ASC;
+	`, id)
+
+	dropsCount := 0
+	if cErr == nil {
+		defer cRows.Close()
+		var firstFound bool
+		for cRows.Next() {
+			var chDate string
+			var oldP, newP, deltaAmt float64
+			if err := cRows.Scan(&chDate, &oldP, &newP, &deltaAmt); err == nil {
+				if !firstFound {
+					changes = append(changes, PriceChangeItem{
+						Date:  chDate,
+						Delta: nil,
+						Price: oldP,
+					})
+					firstFound = true
+				}
+				changes = append(changes, PriceChangeItem{
+					Date:  chDate,
+					Delta: &deltaAmt,
+					Price: newP,
+				})
+				if deltaAmt < 0 {
+					dropsCount++
+				}
+			}
+		}
+	}
+
+	if len(changes) == 0 && firstPrice > price && price > 0 {
+		changes = append(changes, PriceChangeItem{
+			Date:  sinceDate,
+			Delta: nil,
+			Price: firstPrice,
+		})
+		deltaAmt := price - firstPrice
+		changes = append(changes, PriceChangeItem{
+			Date:  time.Now().Format("2006-01-02"),
+			Delta: &deltaAmt,
+			Price: price,
+		})
+		dropsCount = 1
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ok":          true,
+		"has":         true,
+		"portal":      source,
+		"mid":         extID,
+		"url":         u,
+		"deal_type":   dType,
+		"days":        days,
+		"since":       sinceDate,
+		"first_price": firstPrice,
+		"last_price":  price,
+		"changes":     changes,
+		"drops":       dropsCount,
+		"images":      images,
+		"meta": map[string]any{
+			"area":   area,
+			"rooms":  rooms,
+			"floor":  floor,
+			"town":   town,
+			"street": addr,
+		},
+	})
+}
+
+// /api/popup-signals?code=36010086601&lat=57.42&lon=27.04
+func handlePopupSignals(w http.ResponseWriter, r *http.Request) {
+	code := r.URL.Query().Get("code")
+	latStr := r.URL.Query().Get("lat")
+	lonStr := r.URL.Query().Get("lon")
+	if lonStr == "" {
+		lonStr = r.URL.Query().Get("lng")
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 6*time.Second)
+	defer cancel()
+
+	if code == "" && latStr != "" && lonStr != "" {
+		lat, _ := strconv.ParseFloat(latStr, 64)
+		lon, _ := strconv.ParseFloat(lonStr, 64)
+		_ = dbPool.QueryRow(ctx, `
+			SELECT code FROM public.parcels
+			WHERE ST_Contains(geom, ST_Transform(ST_SetSRID(ST_MakePoint($1, $2), 4326), 3857))
+			LIMIT 1;
+		`, lon, lat).Scan(&code)
+	}
+
+	if code == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Parametrs 'code' vai koordinātas ir obligātas"})
+		return
+	}
+
+	type Signal struct {
+		Key    string `json:"key"`
+		Level  string `json:"level"`
+		Title  string `json:"title"`
+		Sub    string `json:"sub,omitempty"`
+		Tip    string `json:"tip,omitempty"`
+		N      int    `json:"n,omitempty"`
+		Median any    `json:"median,omitempty"`
+		Scope  any    `json:"scope,omitempty"`
+		Last   any    `json:"last,omitempty"`
+	}
+
+	signals := make([]Signal, 0)
+	hasRisks := false
+
+	// 1. Darījumi šajā zemē (tx)
+	type TxLastItem struct {
+		D    string  `json:"d"`
+		DT   string  `json:"dt"`
+		S    float64 `json:"s"`
+		A    float64 `json:"a"`
+		Ppm2 float64 `json:"ppm2,omitempty"`
+	}
+	lastDeals := make([]TxLastItem, 0)
+	var txCount int
+	var txMedian float64
+
+	tErr := dbPool.QueryRow(ctx, `
+		SELECT COUNT(*), COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY amount_eur), 0)
+		FROM public.transactions
+		WHERE cadastre_code = $1;
+	`, code).Scan(&txCount, &txMedian)
+
+	if tErr == nil && txCount > 0 {
+		dRows, _ := dbPool.Query(ctx, `
+			SELECT to_char(deal_date, 'MM.YYYY'), to_char(deal_date, 'YYYY-MM-DD'), amount_eur, COALESCE(area_m2, 0), COALESCE(price_per_m2, 0)
+			FROM public.transactions
+			WHERE cadastre_code = $1
+			ORDER BY deal_date DESC
+			LIMIT 5;
+		`, code)
+		if dRows != nil {
+			defer dRows.Close()
+			for dRows.Next() {
+				var d, dt string
+				var s, a, p float64
+				if err := dRows.Scan(&d, &dt, &s, &a, &p); err == nil {
+					lastDeals = append(lastDeals, TxLastItem{D: d, DT: dt, S: s, A: a, Ppm2: p})
+				}
+			}
+		}
+
+		lastSub := ""
+		if len(lastDeals) > 0 {
+			lastSub = "pēdējais " + lastDeals[0].D
+		}
+
+		signals = append(signals, Signal{
+			Key:    "tx",
+			Level:  "info",
+			Title:  fmt.Sprintf("%d darījumi šajā zemē", txCount),
+			Sub:    lastSub,
+			N:      txCount,
+			Median: txMedian,
+			Last:   lastDeals,
+		})
+	}
+
+	// 2. Darījumi 500m rādiusā (tx_near)
+	var nearCount int
+	var nearMedian float64
+	var nearLastDate string
+	nErr := dbPool.QueryRow(ctx, `
+		SELECT COUNT(*), COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY t.amount_eur), 0), COALESCE(to_char(MAX(t.deal_date), 'MM.YYYY'), '')
+		FROM public.transactions t, public.parcels p
+		WHERE p.code = $1 AND p.geom IS NOT NULL AND t.geom IS NOT NULL
+		  AND ST_DWithin(p.geom, t.geom, 500)
+		  AND (t.cadastre_code IS NULL OR t.cadastre_code != $1);
+	`, code).Scan(&nearCount, &nearMedian, &nearLastDate)
+
+	if nErr == nil && nearCount > 0 {
+		subStr := fmt.Sprintf("mediāna %d €", int(nearMedian))
+		if nearLastDate != "" {
+			subStr += " · pēdējais " + nearLastDate
+		}
+		signals = append(signals, Signal{
+			Key:    "tx_near",
+			Level:  "info",
+			Title:  fmt.Sprintf("%d darījumi 500 m rādiusā", nearCount),
+			Sub:    subStr,
+			N:      nearCount,
+			Median: nearMedian,
+			Scope:  500,
+		})
+	}
+
+	// 3. Apgrūtinājumi un servitūti (enc)
+	var encCount int
+	var encTypes string
+	eErr := dbPool.QueryRow(ctx, `
+		SELECT COUNT(*), COALESCE(string_agg(DISTINCT w.restriction_type, '; '), '')
+		FROM public.way_restrictions w, public.parcels p
+		WHERE p.code = $1 AND p.geom IS NOT NULL AND ST_Intersects(p.geom, w.geom);
+	`, code).Scan(&encCount, &encTypes)
+
+	if eErr == nil && encCount > 0 {
+		signals = append(signals, Signal{
+			Key:   "enc",
+			Level: "info",
+			Title: fmt.Sprintf("%d apgrūtinājumi", encCount),
+			Sub:   "Valsts nozīmes aizsargjoslas un servitūti",
+			Tip:   encTypes,
+		})
+	}
+
+	// 4. Teritorijas plānotais zonējums (zone)
+	var zIndekss, zNosaukums string
+	zErr := dbPool.QueryRow(ctx, `
+		SELECT COALESCE(t.indekss, ''), COALESCE(t.nosaukums, '')
+		FROM public.tapis_zonejums t, public.parcels p
+		WHERE p.code = $1 AND p.geom IS NOT NULL AND ST_Intersects(p.geom, t.geom)
+		LIMIT 1;
+	`, code).Scan(&zIndekss, &zNosaukums)
+
+	if zErr == nil && zIndekss != "" {
+		signals = append(signals, Signal{
+			Key:   "zone",
+			Level: "info",
+			Title: "Zonējums " + zIndekss,
+			Sub:   zNosaukums,
+		})
+	}
+
+	// 5. Vides un drošības riski (plūdi, grausti, dabas liegumi)
+	var hasFlood, hasNature, hasDegrading bool
+	_ = dbPool.QueryRow(ctx, `
+		SELECT 
+			EXISTS(SELECT 1 FROM public.flood_zone_spring_100y f, public.parcels p WHERE p.code = $1 AND p.geom IS NOT NULL AND ST_Intersects(p.geom, f.geom)) OR
+			EXISTS(SELECT 1 FROM public.flood_zone_sea_100y f, public.parcels p WHERE p.code = $1 AND p.geom IS NOT NULL AND ST_Intersects(p.geom, f.geom)),
+			EXISTS(SELECT 1 FROM public.mv_protected_areas a, public.parcels p WHERE p.code = $1 AND p.geom IS NOT NULL AND ST_Intersects(p.geom, a.geom)),
+			EXISTS(SELECT 1 FROM public.degrading_buildings d WHERE d.cadastre_code = $1);
+	`, code).Scan(&hasFlood, &hasNature, &hasDegrading)
+
+	if hasFlood {
+		hasRisks = true
+		signals = append(signals, Signal{
+			Key:   "flood",
+			Level: "warn",
+			Title: "Plūdu riska zona",
+			Sub:   "LVĢMC 100 gadu plūdu draudi",
+		})
+	}
+
+	if hasNature {
+		signals = append(signals, Signal{
+			Key:   "nature",
+			Level: "info",
+			Title: "Aizsargājama dabas teritorija",
+			Sub:   "DAP ĪADT vai mikroliegums",
+		})
+	}
+
+	if hasDegrading {
+		hasRisks = true
+		signals = append(signals, Signal{
+			Key:   "degrading",
+			Level: "warn",
+			Title: "Vidi degradējoša būve",
+			Sub:   "Reģistrēts grausts",
+		})
+	}
+
+	if !hasRisks && len(signals) == 0 {
+		signals = append(signals, Signal{
+			Key:   "ok",
+			Level: "good",
+			Title: "Bez zināmiem riskiem",
+			Sub:   "troksnis, plūdi, piesārņojums, liegumi",
+		})
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"signals": signals,
+		"risk":    hasRisks,
+		"sources": 11,
+	})
+}
+
