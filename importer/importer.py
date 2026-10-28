@@ -11,6 +11,7 @@ import csv
 import json
 import zipfile
 import argparse
+import unicodedata
 import requests
 from tqdm import tqdm
 import psycopg
@@ -222,6 +223,12 @@ def import_cadastre_riga(limit: int = 0):
     """Importē Rīgas kadastra zemes vienības un būves."""
     import_cadastre_all_latvia(limit=limit, region_filter="0001000", force=True)
 
+def normalize_str(s: str) -> str:
+    """Noņem diakritiskās zīmes un pārvērš mazajos burtos ērtai reģionu meklēšanai."""
+    if not s:
+        return ""
+    return unicodedata.normalize('NFKD', s).encode('ASCII', 'ignore').decode('utf-8').lower()
+
 def import_cadastre_all_latvia(limit: int = 0, region_filter: str = None, resume_from: str = None, keep_zips: bool = False, force: bool = False):
     """Secīgi lejupielādē un ielādē visas Latvijas pašvaldību kadastra datus (42 novadi/pilsētas)."""
     resources = get_cadastre_resources()
@@ -251,12 +258,13 @@ def import_cadastre_all_latvia(limit: int = 0, region_filter: str = None, resume
             t_code = filename.split("_")[0]
 
             if region_filter:
-                rf = region_filter.lower()
-                if rf not in name.lower() and rf not in t_code.lower() and rf not in filename.lower():
+                rf = normalize_str(region_filter)
+                if rf not in normalize_str(name) and rf not in t_code.lower() and rf not in filename.lower():
                     continue
 
             if not resuming:
-                if resume_from.lower() in name.lower() or resume_from.lower() in t_code.lower():
+                rf = normalize_str(resume_from)
+                if rf in normalize_str(name) or rf in t_code.lower():
                     resuming = True
                 else:
                     print(f"⏭️ Izlaiž reģionu līdz {resume_from}: {name}")
