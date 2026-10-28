@@ -47,6 +47,9 @@ CREATE INDEX IF NOT EXISTS idx_listings_closed_at ON public.listings (closed_at)
 CREATE INDEX IF NOT EXISTS idx_listings_price ON public.listings (price);
 CREATE INDEX IF NOT EXISTS idx_listings_category ON public.listings (category);
 CREATE INDEX IF NOT EXISTS idx_listings_deal_type ON public.listings (deal_type);
+CREATE INDEX IF NOT EXISTS idx_listings_town ON public.listings (town);
+CREATE INDEX IF NOT EXISTS idx_listings_first_seen ON public.listings (first_seen_at);
+CREATE INDEX IF NOT EXISTS idx_listings_last_seen ON public.listings (last_seen_at);
 
 CREATE TABLE IF NOT EXISTS public.listing_price_changes (
     id BIGSERIAL PRIMARY KEY,

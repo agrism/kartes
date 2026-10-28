@@ -72,6 +72,8 @@ func main() {
 	mux.HandleFunc("/api/scraper-status", handleScraperStatus)
 	mux.HandleFunc("/api/scraper-runs", handleScraperStatus)
 	mux.HandleFunc("/api/tx-pts", handleTxPts)
+	mux.HandleFunc("/api/meklet-stats", handleMekletStats)
+	mux.HandleFunc("/api/search", handleUnifiedSearch)
 
 	handler := enableCORS(mux)
 
@@ -1359,4 +1361,670 @@ func handleTxPts(w http.ResponseWriter, r *http.Request) {
 
 	w.Write(bytes)
 }
+
+var (
+	mekletStatsCacheMutex sync.RWMutex
+	mekletStatsCacheBytes []byte
+	mekletStatsCacheTime  time.Time
+)
+
+// handleMekletStats atgriež dzīvos kopskaitus 4 galvenajām kategorijām
+func handleMekletStats(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "public, max-age=120")
+
+	mekletStatsCacheMutex.RLock()
+	if len(mekletStatsCacheBytes) > 0 && time.Since(mekletStatsCacheTime) < 3*time.Minute {
+		cached := mekletStatsCacheBytes
+		mekletStatsCacheMutex.RUnlock()
+		w.Write(cached)
+		return
+	}
+	mekletStatsCacheMutex.RUnlock()
+
+	if dbPool == nil {
+		http.Error(w, `{"error":"Datubāze nav pieejama"}`, http.StatusServiceUnavailable)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	var listingsCount, dealsCount, parcelsCount, buildingsCount, auctionsCount int64
+
+	_ = dbPool.QueryRow(ctx, "SELECT count(*) FROM public.listings WHERE is_active = true").Scan(&listingsCount)
+	_ = dbPool.QueryRow(ctx, "SELECT count(*) FROM public.transactions").Scan(&dealsCount)
+	_ = dbPool.QueryRow(ctx, "SELECT count(*) FROM public.parcels").Scan(&parcelsCount)
+	_ = dbPool.QueryRow(ctx, "SELECT count(*) FROM public.buildings").Scan(&buildingsCount)
+	_ = dbPool.QueryRow(ctx, "SELECT count(*) FROM public.listings WHERE is_active = true AND (deal_type = 'auction' OR category = 'auctions')").Scan(&auctionsCount)
+
+	res := map[string]any{
+		"listings":   listingsCount,
+		"deals":      dealsCount,
+		"props":      parcelsCount + buildingsCount,
+		"auctions":   auctionsCount,
+		"updated_at": time.Now().Format(time.RFC3339),
+	}
+
+	bytes, err := json.Marshal(res)
+	if err == nil {
+		mekletStatsCacheMutex.Lock()
+		mekletStatsCacheBytes = bytes
+		mekletStatsCacheTime = time.Now()
+		mekletStatsCacheMutex.Unlock()
+	}
+
+	w.Write(bytes)
+}
+
+// handleUnifiedSearch apstrādā vienoto /api/search pieprasījumu
+func handleUnifiedSearch(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 12*time.Second)
+	defer cancel()
+
+	if dbPool == nil {
+		http.Error(w, `{"error":"Datubāze nav pieejama"}`, http.StatusServiceUnavailable)
+		return
+	}
+
+	qParams := r.URL.Query()
+	mode := strings.ToLower(strings.TrimSpace(qParams.Get("mode")))
+	if mode == "" {
+		mode = "listings"
+	}
+
+	page, _ := strconv.Atoi(qParams.Get("page"))
+	if page < 1 {
+		page = 1
+	}
+	per, _ := strconv.Atoi(qParams.Get("per"))
+	if per < 1 || per > 100 {
+		per = 50
+	}
+	offset := (page - 1) * per
+
+	q := strings.TrimSpace(qParams.Get("q"))
+	bboxStr := strings.TrimSpace(qParams.Get("bbox"))
+
+	switch mode {
+	case "deals":
+		searchDeals(w, ctx, qParams, q, bboxStr, page, per, offset)
+	case "props":
+		searchProps(w, ctx, qParams, q, bboxStr, page, per, offset)
+	case "auctions":
+		searchAuctions(w, ctx, qParams, q, bboxStr, page, per, offset)
+	default:
+		searchListings(w, ctx, qParams, q, bboxStr, page, per, offset)
+	}
+}
+
+func searchListings(w http.ResponseWriter, ctx context.Context, qParams url.Values, q, bboxStr string, page, per, offset int) {
+	whereClauses := []string{"1=1"}
+	args := []any{}
+	argIdx := 1
+
+	active := strings.ToLower(qParams.Get("active"))
+	if active == "" || active == "1" || active == "true" {
+		whereClauses = append(whereClauses, "l.is_active = TRUE")
+	} else if active == "0" || active == "false" {
+		whereClauses = append(whereClauses, "l.is_active = FALSE")
+	}
+
+	deal := strings.ToLower(qParams.Get("deal"))
+	if deal == "" {
+		deal = strings.ToLower(qParams.Get("deal_type"))
+	}
+	if deal != "" && deal != "all" {
+		whereClauses = append(whereClauses, fmt.Sprintf("l.deal_type = $%d", argIdx))
+		args = append(args, deal)
+		argIdx++
+	}
+
+	cat := strings.ToLower(qParams.Get("cat"))
+	if cat == "" {
+		cat = strings.ToLower(qParams.Get("category"))
+	}
+	if cat != "" && cat != "all" {
+		whereClauses = append(whereClauses, fmt.Sprintf("l.category = $%d", argIdx))
+		args = append(args, cat)
+		argIdx++
+	}
+
+	portal := strings.ToLower(qParams.Get("portal"))
+	if portal == "" {
+		portal = strings.ToLower(qParams.Get("source"))
+	}
+	if portal != "" && portal != "all" {
+		whereClauses = append(whereClauses, fmt.Sprintf("l.source = $%d", argIdx))
+		args = append(args, portal)
+		argIdx++
+	}
+
+	town := strings.TrimSpace(qParams.Get("town"))
+	if town != "" {
+		whereClauses = append(whereClauses, fmt.Sprintf("(l.town ILIKE $%d OR l.district ILIKE $%d)", argIdx, argIdx))
+		args = append(args, "%"+town+"%")
+		argIdx++
+	}
+
+	district := strings.TrimSpace(qParams.Get("district"))
+	if district != "" {
+		whereClauses = append(whereClauses, fmt.Sprintf("l.district ILIKE $%d", argIdx))
+		args = append(args, "%"+district+"%")
+		argIdx++
+	}
+
+	series := strings.TrimSpace(qParams.Get("series"))
+	if series != "" {
+		whereClauses = append(whereClauses, fmt.Sprintf("l.series ILIKE $%d", argIdx))
+		args = append(args, "%"+series+"%")
+		argIdx++
+	}
+
+	if pminStr := qParams.Get("pmin"); pminStr != "" {
+		if pmin, err := strconv.ParseFloat(pminStr, 64); err == nil && pmin > 0 {
+			whereClauses = append(whereClauses, fmt.Sprintf("l.price >= $%d", argIdx))
+			args = append(args, pmin)
+			argIdx++
+		}
+	}
+	if pmaxStr := qParams.Get("pmax"); pmaxStr != "" {
+		if pmax, err := strconv.ParseFloat(pmaxStr, 64); err == nil && pmax > 0 {
+			whereClauses = append(whereClauses, fmt.Sprintf("l.price <= $%d", argIdx))
+			args = append(args, pmax)
+			argIdx++
+		}
+	}
+
+	if aminStr := qParams.Get("amin"); aminStr != "" {
+		if amin, err := strconv.ParseFloat(aminStr, 64); err == nil && amin > 0 {
+			whereClauses = append(whereClauses, fmt.Sprintf("l.area_m2 >= $%d", argIdx))
+			args = append(args, amin)
+			argIdx++
+		}
+	}
+	if amaxStr := qParams.Get("amax"); amaxStr != "" {
+		if amax, err := strconv.ParseFloat(amaxStr, 64); err == nil && amax > 0 {
+			whereClauses = append(whereClauses, fmt.Sprintf("l.area_m2 <= $%d", argIdx))
+			args = append(args, amax)
+			argIdx++
+		}
+	}
+
+	if rminStr := qParams.Get("rmin"); rminStr != "" {
+		if rmin, err := strconv.Atoi(rminStr); err == nil && rmin > 0 {
+			whereClauses = append(whereClauses, fmt.Sprintf("l.rooms >= $%d", argIdx))
+			args = append(args, rmin)
+			argIdx++
+		}
+	}
+	if rmaxStr := qParams.Get("rmax"); rmaxStr != "" {
+		if rmax, err := strconv.Atoi(rmaxStr); err == nil && rmax > 0 {
+			whereClauses = append(whereClauses, fmt.Sprintf("l.rooms <= $%d", argIdx))
+			args = append(args, rmax)
+			argIdx++
+		}
+	}
+
+	if drop := qParams.Get("drop"); drop == "1" || drop == "true" {
+		whereClauses = append(whereClauses, "(l.first_price > 0 AND l.price < l.first_price)")
+	}
+
+	if q != "" {
+		whereClauses = append(whereClauses, fmt.Sprintf("(l.address_text ILIKE $%d OR l.title ILIKE $%d OR l.cadastre_code = $%d)", argIdx, argIdx, argIdx))
+		args = append(args, "%"+q+"%")
+		argIdx++
+	}
+
+	if bboxStr != "" {
+		coords := strings.Split(bboxStr, ",")
+		if len(coords) == 4 {
+			minX, _ := strconv.ParseFloat(strings.TrimSpace(coords[0]), 64)
+			minY, _ := strconv.ParseFloat(strings.TrimSpace(coords[1]), 64)
+			maxX, _ := strconv.ParseFloat(strings.TrimSpace(coords[2]), 64)
+			maxY, _ := strconv.ParseFloat(strings.TrimSpace(coords[3]), 64)
+			whereClauses = append(whereClauses, fmt.Sprintf("l.geom && ST_MakeEnvelope($%d, $%d, $%d, $%d, 4326)", argIdx, argIdx+1, argIdx+2, argIdx+3))
+			args = append(args, minX, minY, maxX, maxY)
+			argIdx += 4
+		}
+	}
+
+	sortField := qParams.Get("sort")
+	dir := strings.ToUpper(qParams.Get("dir"))
+	if dir != "ASC" && dir != "DESC" {
+		dir = "DESC"
+	}
+
+	orderBy := "l.last_seen_at DESC"
+	switch sortField {
+	case "date":
+		orderBy = fmt.Sprintf("l.first_seen_at %s", dir)
+	case "price", "price_asc", "price_desc":
+		if sortField == "price_asc" {
+			dir = "ASC"
+		}
+		orderBy = fmt.Sprintf("l.price %s NULLS LAST", dir)
+	case "ppm", "price_per_m2":
+		orderBy = fmt.Sprintf("l.price_per_m2 %s NULLS LAST", dir)
+	case "area":
+		orderBy = fmt.Sprintf("l.area_m2 %s NULLS LAST", dir)
+	case "drop", "drop_pct":
+		orderBy = "((l.first_price - l.price) / NULLIF(l.first_price, 0)) DESC NULLS LAST"
+	default:
+		orderBy = fmt.Sprintf("l.last_seen_at %s", dir)
+	}
+
+	query := fmt.Sprintf(`
+		SELECT 
+			l.id, l.source, l.external_id, l.deal_type, l.category, l.title, l.url,
+			COALESCE(l.price, 0), COALESCE(l.first_price, 0), COALESCE(l.price_per_m2, 0),
+			COALESCE(l.area_m2, 0), COALESCE(l.rooms, 0), COALESCE(l.floor, 0), COALESCE(l.total_floors, 0),
+			COALESCE(l.series, ''), COALESCE(l.house_type, ''), COALESCE(l.address_text, ''),
+			COALESCE(l.town, ''), COALESCE(l.district, ''), COALESCE(l.cadastre_code, ''),
+			COALESCE(l.images::text, '[]'), l.days_on_market, l.is_active,
+			to_char(l.published_at, 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+			to_char(l.first_seen_at, 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+			to_char(l.last_seen_at, 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+			to_char(l.closed_at, 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+			COALESCE(ST_X(l.geom), 0),
+			COALESCE(ST_Y(l.geom), 0),
+			CASE 
+				WHEN l.first_price > 0 AND l.price < l.first_price 
+				THEN round(((l.price - l.first_price) / l.first_price * 100)::numeric, 1)
+				ELSE NULL 
+			END AS drop_pct,
+			count(*) OVER() AS full_count
+		FROM public.listings l
+		WHERE %s
+		ORDER BY %s
+		LIMIT $%d OFFSET $%d;
+	`, strings.Join(whereClauses, " AND "), orderBy, argIdx, argIdx+1)
+
+	args = append(args, per, offset)
+
+	rows, err := dbPool.Query(ctx, query, args...)
+	if err != nil {
+		log.Printf("Kļūda meklējot sludinājumus: %v", err)
+		writeJSON(w, http.StatusOK, map[string]any{
+			"mode":  "listings",
+			"total": 0,
+			"page":  page,
+			"per":   per,
+			"rows":  []any{},
+		})
+		return
+	}
+	defer rows.Close()
+
+	var totalCount int64 = 0
+	type ListingRow struct {
+		ID           int64    `json:"id"`
+		Portal       string   `json:"portal"`
+		Mid          string   `json:"mid"`
+		DealType     string   `json:"deal_type"`
+		Category     string   `json:"category"`
+		Title        string   `json:"title"`
+		URL          string   `json:"url"`
+		Price        float64  `json:"price"`
+		FirstPrice   float64  `json:"first_price"`
+		PricePerM2   float64  `json:"price_per_m2"`
+		Area         float64  `json:"area"`
+		Rooms        int      `json:"rooms"`
+		Floor        int      `json:"floor"`
+		TotalFloors  int      `json:"total_floors"`
+		Series       string   `json:"series"`
+		HouseType    string   `json:"house_type"`
+		AddrRaw      string   `json:"addr_raw"`
+		AddrTown     string   `json:"addr_town"`
+		AddrDistrict string   `json:"addr_district"`
+		CadastreCode string   `json:"cadastre_code"`
+		Images       []string `json:"images"`
+		DaysOnMarket int      `json:"days"`
+		IsActive     bool     `json:"is_active"`
+		Status       string   `json:"status"`
+		PublishedAt  *string  `json:"published_at"`
+		FirstSeen    *string  `json:"first_seen"`
+		LastSeen     *string  `json:"last_seen"`
+		ClosedAt     *string  `json:"closed_at"`
+		Lng          float64  `json:"lng"`
+		Lat          float64  `json:"lat"`
+		DropPct      *float64 `json:"drop_pct"`
+	}
+
+	resultRows := make([]ListingRow, 0)
+	for rows.Next() {
+		var r ListingRow
+		var imgJSON string
+		var pAt, fSeen, lSeen, cAt *string
+		var dropPct *float64
+		var fCount int64
+
+		err := rows.Scan(
+			&r.ID, &r.Portal, &r.Mid, &r.DealType, &r.Category, &r.Title, &r.URL,
+			&r.Price, &r.FirstPrice, &r.PricePerM2,
+			&r.Area, &r.Rooms, &r.Floor, &r.TotalFloors,
+			&r.Series, &r.HouseType, &r.AddrRaw,
+			&r.AddrTown, &r.AddrDistrict, &r.CadastreCode,
+			&imgJSON, &r.DaysOnMarket, &r.IsActive,
+			&pAt, &fSeen, &lSeen, &cAt,
+			&r.Lng, &r.Lat,
+			&dropPct,
+			&fCount,
+		)
+		if err == nil {
+			totalCount = fCount
+			r.PublishedAt = pAt
+			r.FirstSeen = fSeen
+			r.LastSeen = lSeen
+			r.ClosedAt = cAt
+			r.DropPct = dropPct
+			if r.IsActive {
+				r.Status = "active"
+			} else {
+				r.Status = "closed"
+			}
+			var imgs []string
+			if err := json.Unmarshal([]byte(imgJSON), &imgs); err == nil {
+				r.Images = imgs
+			}
+			resultRows = append(resultRows, r)
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"mode":  "listings",
+		"total": totalCount,
+		"page":  page,
+		"per":   per,
+		"sort":  sortField,
+		"dir":   dir,
+		"rows":  resultRows,
+	})
+}
+
+func searchDeals(w http.ResponseWriter, ctx context.Context, qParams url.Values, q, bboxStr string, page, per, offset int) {
+	whereClauses := []string{"1=1"}
+	args := []any{}
+	argIdx := 1
+
+	if q != "" {
+		whereClauses = append(whereClauses, fmt.Sprintf("(t.address ILIKE $%d OR t.cadastre_code = $%d)", argIdx, argIdx))
+		args = append(args, "%"+q+"%")
+		argIdx++
+	}
+
+	if pminStr := qParams.Get("pmin"); pminStr != "" {
+		if pmin, err := strconv.ParseFloat(pminStr, 64); err == nil && pmin > 0 {
+			whereClauses = append(whereClauses, fmt.Sprintf("t.amount_eur >= $%d", argIdx))
+			args = append(args, pmin)
+			argIdx++
+		}
+	}
+	if pmaxStr := qParams.Get("pmax"); pmaxStr != "" {
+		if pmax, err := strconv.ParseFloat(pmaxStr, 64); err == nil && pmax > 0 {
+			whereClauses = append(whereClauses, fmt.Sprintf("t.amount_eur <= $%d", argIdx))
+			args = append(args, pmax)
+			argIdx++
+		}
+	}
+
+	if aminStr := qParams.Get("amin"); aminStr != "" {
+		if amin, err := strconv.ParseFloat(aminStr, 64); err == nil && amin > 0 {
+			whereClauses = append(whereClauses, fmt.Sprintf("t.area_m2 >= $%d", argIdx))
+			args = append(args, amin)
+			argIdx++
+		}
+	}
+	if amaxStr := qParams.Get("amax"); amaxStr != "" {
+		if amax, err := strconv.ParseFloat(amaxStr, 64); err == nil && amax > 0 {
+			whereClauses = append(whereClauses, fmt.Sprintf("t.area_m2 <= $%d", argIdx))
+			args = append(args, amax)
+			argIdx++
+		}
+	}
+
+	if dmin := qParams.Get("dmin"); dmin != "" {
+		whereClauses = append(whereClauses, fmt.Sprintf("t.deal_date >= $%d::date", argIdx))
+		args = append(args, dmin)
+		argIdx++
+	}
+	if dmax := qParams.Get("dmax"); dmax != "" {
+		whereClauses = append(whereClauses, fmt.Sprintf("t.deal_date <= $%d::date", argIdx))
+		args = append(args, dmax)
+		argIdx++
+	}
+
+	if ptype := qParams.Get("ptype"); ptype != "" && ptype != "all" {
+		whereClauses = append(whereClauses, fmt.Sprintf("t.property_type ILIKE $%d", argIdx))
+		args = append(args, "%"+ptype+"%")
+		argIdx++
+	}
+
+	if bboxStr != "" {
+		coords := strings.Split(bboxStr, ",")
+		if len(coords) == 4 {
+			minX, _ := strconv.ParseFloat(strings.TrimSpace(coords[0]), 64)
+			minY, _ := strconv.ParseFloat(strings.TrimSpace(coords[1]), 64)
+			maxX, _ := strconv.ParseFloat(strings.TrimSpace(coords[2]), 64)
+			maxY, _ := strconv.ParseFloat(strings.TrimSpace(coords[3]), 64)
+			whereClauses = append(whereClauses, fmt.Sprintf("t.geom && ST_Transform(ST_MakeEnvelope($%d, $%d, $%d, $%d, 4326), 3857)", argIdx, argIdx+1, argIdx+2, argIdx+3))
+			args = append(args, minX, minY, maxX, maxY)
+			argIdx += 4
+		}
+	}
+
+	sortField := qParams.Get("sort")
+	dir := strings.ToUpper(qParams.Get("dir"))
+	if dir != "ASC" && dir != "DESC" {
+		dir = "DESC"
+	}
+
+	orderBy := fmt.Sprintf("t.deal_date %s", dir)
+	switch sortField {
+	case "price":
+		orderBy = fmt.Sprintf("t.amount_eur %s NULLS LAST", dir)
+	case "ppm":
+		orderBy = fmt.Sprintf("t.price_per_m2 %s NULLS LAST", dir)
+	case "area":
+		orderBy = fmt.Sprintf("t.area_m2 %s NULLS LAST", dir)
+	}
+
+	query := fmt.Sprintf(`
+		SELECT 
+			t.id, COALESCE(t.deal_id, t.id), to_char(t.deal_date, 'YYYY-MM-DD'),
+			COALESCE(t.amount_eur, 0), COALESCE(t.price_per_m2, 0), COALESCE(t.area_m2, 0),
+			COALESCE(t.property_type, ''), COALESCE(t.address, ''), COALESCE(t.cadastre_code, ''),
+			COALESCE(ST_X(ST_Transform(t.geom, 4326)), 0),
+			COALESCE(ST_Y(ST_Transform(t.geom, 4326)), 0),
+			count(*) OVER() AS full_count
+		FROM public.transactions t
+		WHERE %s
+		ORDER BY %s
+		LIMIT $%d OFFSET $%d;
+	`, strings.Join(whereClauses, " AND "), orderBy, argIdx, argIdx+1)
+
+	args = append(args, per, offset)
+
+	rows, err := dbPool.Query(ctx, query, args...)
+	if err != nil {
+		log.Printf("Kļūda meklējot darījumus: %v", err)
+		writeJSON(w, http.StatusOK, map[string]any{"mode": "deals", "total": 0, "page": page, "per": per, "rows": []any{}})
+		return
+	}
+	defer rows.Close()
+
+	var totalCount int64 = 0
+	type DealRow struct {
+		ID           int64   `json:"id"`
+		DarijumaID   int64   `json:"darijuma_id"`
+		Datums       string  `json:"datums"`
+		Summa        float64 `json:"summa"`
+		Ppm          float64 `json:"ppm"`
+		Area         float64 `json:"area"`
+		PropertyType string  `json:"property_type"`
+		Adrese       string  `json:"adrese"`
+		CadastreCode string  `json:"cadastre_code"`
+		Lng          float64 `json:"lng"`
+		Lat          float64 `json:"lat"`
+	}
+
+	resultRows := make([]DealRow, 0)
+	for rows.Next() {
+		var r DealRow
+		var fCount int64
+		err := rows.Scan(
+			&r.ID, &r.DarijumaID, &r.Datums, &r.Summa,
+			&r.Ppm, &r.Area, &r.PropertyType, &r.Adrese, &r.CadastreCode,
+			&r.Lng, &r.Lat, &fCount,
+		)
+		if err == nil {
+			totalCount = fCount
+			resultRows = append(resultRows, r)
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"mode":  "deals",
+		"total": totalCount,
+		"page":  page,
+		"per":   per,
+		"sort":  sortField,
+		"dir":   dir,
+		"rows":  resultRows,
+	})
+}
+
+func searchProps(w http.ResponseWriter, ctx context.Context, qParams url.Values, q, bboxStr string, page, per, offset int) {
+	whereClauses := []string{"1=1"}
+	args := []any{}
+	argIdx := 1
+
+	if q != "" {
+		whereClauses = append(whereClauses, fmt.Sprintf("(p.code = $%d OR p.address ILIKE $%d)", argIdx, argIdx))
+		args = append(args, "%"+q+"%")
+		argIdx++
+	}
+
+	if vminStr := qParams.Get("vmin"); vminStr != "" {
+		if vmin, err := strconv.ParseFloat(vminStr, 64); err == nil && vmin > 0 {
+			whereClauses = append(whereClauses, fmt.Sprintf("p.cadastral_value >= $%d", argIdx))
+			args = append(args, vmin)
+			argIdx++
+		}
+	}
+	if vmaxStr := qParams.Get("vmax"); vmaxStr != "" {
+		if vmax, err := strconv.ParseFloat(vmaxStr, 64); err == nil && vmax > 0 {
+			whereClauses = append(whereClauses, fmt.Sprintf("p.cadastral_value <= $%d", argIdx))
+			args = append(args, vmax)
+			argIdx++
+		}
+	}
+
+	if aminStr := qParams.Get("amin"); aminStr != "" {
+		if amin, err := strconv.ParseFloat(aminStr, 64); err == nil && amin > 0 {
+			whereClauses = append(whereClauses, fmt.Sprintf("p.area_m2 >= $%d", argIdx))
+			args = append(args, amin)
+			argIdx++
+		}
+	}
+	if amaxStr := qParams.Get("amax"); amaxStr != "" {
+		if amax, err := strconv.ParseFloat(amaxStr, 64); err == nil && amax > 0 {
+			whereClauses = append(whereClauses, fmt.Sprintf("p.area_m2 <= $%d", argIdx))
+			args = append(args, amax)
+			argIdx++
+		}
+	}
+
+	if bboxStr != "" {
+		coords := strings.Split(bboxStr, ",")
+		if len(coords) == 4 {
+			minX, _ := strconv.ParseFloat(strings.TrimSpace(coords[0]), 64)
+			minY, _ := strconv.ParseFloat(strings.TrimSpace(coords[1]), 64)
+			maxX, _ := strconv.ParseFloat(strings.TrimSpace(coords[2]), 64)
+			maxY, _ := strconv.ParseFloat(strings.TrimSpace(coords[3]), 64)
+			whereClauses = append(whereClauses, fmt.Sprintf("p.geom && ST_Transform(ST_MakeEnvelope($%d, $%d, $%d, $%d, 4326), 3857)", argIdx, argIdx+1, argIdx+2, argIdx+3))
+			args = append(args, minX, minY, maxX, maxY)
+			argIdx += 4
+		}
+	}
+
+	sortField := qParams.Get("sort")
+	dir := strings.ToUpper(qParams.Get("dir"))
+	if dir != "ASC" && dir != "DESC" {
+		dir = "DESC"
+	}
+
+	orderBy := fmt.Sprintf("p.cadastral_value %s NULLS LAST", dir)
+	if sortField == "area" {
+		orderBy = fmt.Sprintf("p.area_m2 %s NULLS LAST", dir)
+	}
+
+	query := fmt.Sprintf(`
+		SELECT 
+			p.id, p.code, 'PARCEL' AS otype, COALESCE(p.address, ''),
+			COALESCE(p.area_m2, 0), COALESCE(p.status, ''), COALESCE(p.cadastral_value, 0),
+			COALESCE(ST_X(ST_Centroid(ST_Transform(p.geom, 4326))), 0),
+			COALESCE(ST_Y(ST_Centroid(ST_Transform(p.geom, 4326))), 0),
+			count(*) OVER() AS full_count
+		FROM public.parcels p
+		WHERE %s
+		ORDER BY %s
+		LIMIT $%d OFFSET $%d;
+	`, strings.Join(whereClauses, " AND "), orderBy, argIdx, argIdx+1)
+
+	args = append(args, per, offset)
+
+	rows, err := dbPool.Query(ctx, query, args...)
+	if err != nil {
+		log.Printf("Kļūda meklējot īpašumus: %v", err)
+		writeJSON(w, http.StatusOK, map[string]any{"mode": "props", "total": 0, "page": page, "per": per, "rows": []any{}})
+		return
+	}
+	defer rows.Close()
+
+	var totalCount int64 = 0
+	type PropRow struct {
+		ID             int64   `json:"id"`
+		Code           string  `json:"code"`
+		OType          string  `json:"otype"`
+		Address        string  `json:"address"`
+		Area           float64 `json:"area"`
+		Status         string  `json:"status"`
+		CadastralValue float64 `json:"kad_value"`
+		Lng            float64 `json:"lng"`
+		Lat            float64 `json:"lat"`
+	}
+
+	resultRows := make([]PropRow, 0)
+	for rows.Next() {
+		var r PropRow
+		var fCount int64
+		err := rows.Scan(
+			&r.ID, &r.Code, &r.OType, &r.Address,
+			&r.Area, &r.Status, &r.CadastralValue,
+			&r.Lng, &r.Lat, &fCount,
+		)
+		if err == nil {
+			totalCount = fCount
+			resultRows = append(resultRows, r)
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"mode":  "props",
+		"total": totalCount,
+		"page":  page,
+		"per":   per,
+		"sort":  sortField,
+		"dir":   dir,
+		"rows":  resultRows,
+	})
+}
+
+func searchAuctions(w http.ResponseWriter, ctx context.Context, qParams url.Values, q, bboxStr string, page, per, offset int) {
+	// Izsoles ir sludinājumi ar deal_type = 'auction' vai category = 'auctions'
+	qParams.Set("deal", "auction")
+	searchListings(w, ctx, qParams, q, bboxStr, page, per, offset)
+}
+
 
