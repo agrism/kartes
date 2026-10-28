@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import maplibregl from 'maplibre-gl';
+import { MekletView } from './components/MekletView';
 
 const LISTING_CATS = [
   { key: 'flats', name: 'Dzīvokļi' },
@@ -200,6 +201,51 @@ export default function App() {
   const [selectedParcel, setSelectedParcel] = useState<ParcelInfo | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(false);
+
+  // Skats: 'map' (galvenā karte) vai 'meklet' (sludinājumu/darījumu meklētājs)
+  const [currentView, setCurrentView] = useState<'map' | 'meklet'>(() => {
+    if (typeof window !== 'undefined') {
+      const p = window.location.pathname;
+      const h = window.location.hash;
+      if (p === '/meklet' || h === '#meklet') return 'meklet';
+    }
+    return 'map';
+  });
+
+  const navigateTo = (view: 'map' | 'meklet') => {
+    setCurrentView(view);
+    if (view === 'meklet') {
+      window.history.pushState(null, '', '/meklet');
+    } else {
+      window.history.pushState(null, '', '/');
+    }
+  };
+
+  useEffect(() => {
+    const handleLocation = () => {
+      const p = window.location.pathname;
+      const h = window.location.hash;
+      if (p === '/meklet' || h === '#meklet') {
+        setCurrentView('meklet');
+      } else {
+        setCurrentView('map');
+      }
+    };
+    window.addEventListener('popstate', handleLocation);
+    window.addEventListener('hashchange', handleLocation);
+    return () => {
+      window.removeEventListener('popstate', handleLocation);
+      window.removeEventListener('hashchange', handleLocation);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (currentView === 'map' && map.current) {
+      setTimeout(() => {
+        map.current?.resize();
+      }, 60);
+    }
+  }, [currentView]);
 
   // Sludinājuma vēstures un popup stāvoklis
   const currentPopupRef = useRef<maplibregl.Popup | null>(null);
@@ -2791,7 +2837,14 @@ export default function App() {
       {/* 1. TOP NAVBAR (Identisks ar kadastrakarte.lv) */}
       <header id="navbar">
         <div className="nav-inner">
-          <a href="/" className="nav-logo">
+          <a
+            href="/"
+            className="nav-logo"
+            onClick={(e) => {
+              e.preventDefault();
+              navigateTo('map');
+            }}
+          >
             <div className="nav-logo-icon">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
@@ -2803,8 +2856,26 @@ export default function App() {
 
           <nav className="nav-links">
             <a href="#sakums">Sākums</a>
-            <a href="/" className="active">Karte</a>
-            <a href="#meklet">Meklēt</a>
+            <a
+              href="/"
+              className={currentView === 'map' ? 'active' : ''}
+              onClick={(e) => {
+                e.preventDefault();
+                navigateTo('map');
+              }}
+            >
+              Karte
+            </a>
+            <a
+              href="/meklet"
+              className={currentView === 'meklet' ? 'active' : ''}
+              onClick={(e) => {
+                e.preventDefault();
+                navigateTo('meklet');
+              }}
+            >
+              Meklēt
+            </a>
             <a href="#cik-maksa" style={{ position: 'relative' }}>
               <span className="nav-badge-jaunums">JAUNUMS</span>
               Cik maksā
@@ -2826,15 +2897,33 @@ export default function App() {
         </div>
       </header>
 
-      {/* 2. MAP CONTAINER */}
-      <div id="map" ref={mapContainer} />
-
-      {/* 3. MOBILE OVERLAY */}
+      {/* 2. MAP CONTAINER (Saglabājas DOM, lai kartes stāvoklis un flīzes netiktu zaudēti) */}
       <div
-        id="mob-layers-overlay"
-        className={isLayersOpen ? 'open' : ''}
-        onClick={() => setIsLayersOpen(false)}
+        id="map"
+        ref={mapContainer}
+        style={{
+          visibility: currentView === 'map' ? 'visible' : 'hidden',
+          pointerEvents: currentView === 'map' ? 'auto' : 'none',
+        }}
       />
+
+      {/* 2.5 MEKLĒŠANAS SADALA (Sludinājumi, darījumi, kadastrs, izsoles) */}
+      {currentView === 'meklet' && (
+        <MekletView
+          onOpenListingModal={(item) => openHistoryModal(item)}
+          onOpenParcelModal={(code) => fetchParcelDetails(code)}
+          onClose={() => navigateTo('map')}
+        />
+      )}
+
+      {/* 3. KARTES SKATA ELEMENTI */}
+      {currentView === 'map' && (
+        <>
+          <div
+            id="mob-layers-overlay"
+            className={isLayersOpen ? 'open' : ''}
+            onClick={() => setIsLayersOpen(false)}
+          />
 
       {/* 4. KREISĀ SLEJA: MEKLĒTĀJS UN SLĀŅU KARTIŅA (#map-left-col) */}
       <div id="map-left-col">
@@ -3889,21 +3978,23 @@ export default function App() {
         </div>
       )}
 
-      {/* Peldošā norāde pietuvināšanai, kad mērogs ir tālāks par zemes vienību robežām */}
-      {currentZoom < 11.5 && showParcels && (
-        <div
-          id="zoom-guidance-pill"
-          onClick={() => map.current?.zoomTo(12.5, { duration: 600 })}
-          title="Nospiediet, lai pietuvinātu karti"
-        >
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="11" cy="11" r="8" />
-            <line x1="21" y1="21" x2="16.65" y2="16.65" />
-            <line x1="11" y1="8" x2="11" y2="14" />
-            <line x1="8" y1="11" x2="14" y2="11" />
-          </svg>
-          <span>Pietuviniet, lai redzētu zemes vienību robežas</span>
-        </div>
+          {/* Peldošā norāde pietuvināšanai, kad mērogs ir tālāks par zemes vienību robežām */}
+          {currentZoom < 11.5 && showParcels && (
+            <div
+              id="zoom-guidance-pill"
+              onClick={() => map.current?.zoomTo(12.5, { duration: 600 })}
+              title="Nospiediet, lai pietuvinātu karti"
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                <line x1="11" y1="8" x2="11" y2="14" />
+                <line x1="8" y1="11" x2="14" y2="11" />
+              </svg>
+              <span>Pietuviniet, lai redzētu zemes vienību robežas</span>
+            </div>
+          )}
+        </>
       )}
 
       {/* Sludinājuma vēstures labās puses panelis (Kā oriģinālajā kadastrakarte.lv) */}

@@ -2498,6 +2498,738 @@ body:has(.panel) #zoom-ctl {
   animation: spin 0.8s linear infinite;
 }
 
+/* ═══════════════════════════════════════════════════════════════
+   MEKLĒŠANAS SADALAS STILI (/meklet) - KadastraKarte.lv dizains
+   ═══════════════════════════════════════════════════════════════ */
+
+.meklet-container {
+  position: fixed;
+  top: 62px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background-color: var(--bg-cream, #fbf7ef);
+  z-index: 150;
+  font-family: 'Hanken Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  color: #1a1209;
+}
+
+.meklet-header {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 24px 24px 18px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 24px;
+  border-bottom: 1px solid var(--border-color, #e4d9c1);
+}
+
+.meklet-header-left {
+  flex: 1;
+  min-width: 280px;
+}
+
+.meklet-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 6px;
+}
+
+.meklet-title {
+  font-size: 24px;
+  font-weight: 800;
+  color: #1a1209;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+.meklet-close-btn {
+  background: #ffffff;
+  border: 1px solid var(--border-color, #e4d9c1);
+  padding: 6px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  color: #554d42;
+  transition: all 0.15s;
+}
+
+.meklet-close-btn:hover {
+  background: #f5eee0;
+  color: #1a1209;
+}
+
+.meklet-lead {
+  font-size: 14px;
+  color: #7a7064;
+  line-height: 1.5;
+  margin: 0;
+  max-width: 680px;
+}
+
+.meklet-modes-col {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.meklet-modes {
+  display: inline-flex;
+  background: #eedfc7;
+  padding: 4px;
+  border-radius: 12px;
+  gap: 4px;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+.meklet-modes button {
+  border: none;
+  background: transparent;
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #554d42;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.meklet-modes button i {
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.06);
+  color: #7a7064;
+}
+
+.meklet-modes button:hover:not(.on) {
+  background: rgba(255, 255, 255, 0.4);
+  color: #1a1209;
+}
+
+.meklet-modes button.on {
+  background: #356046;
+  color: #ffffff;
+  box-shadow: 0 2px 6px rgba(53, 96, 70, 0.3);
+}
+
+.meklet-modes button.on i {
+  background: rgba(255, 255, 255, 0.25);
+  color: #ffffff;
+}
+
+.meklet-live-note {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #356046;
+  font-weight: 600;
+}
+
+.meklet-live-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 6px #22c55e;
+  animation: pulseLive 2s infinite;
+}
+
+@keyframes pulseLive {
+  0% { transform: scale(0.95); opacity: 0.8; }
+  50% { transform: scale(1.3); opacity: 1; }
+  100% { transform: scale(0.95); opacity: 0.8; }
+}
+
+/* 2. Filtru panelis */
+.meklet-filters {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 16px 24px;
+  background: #fdfaf2;
+  border-bottom: 1px solid var(--border-color, #e4d9c1);
+}
+
+.meklet-frow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 14px;
+}
+
+.meklet-f {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #554d42;
+}
+
+.meklet-f-grow {
+  flex: 1;
+  min-width: 240px;
+}
+
+.meklet-f input,
+.meklet-f select {
+  height: 38px;
+  border: 1px solid #dcd1ba;
+  background: #ffffff;
+  border-radius: 8px;
+  padding: 0 12px;
+  font-size: 13px;
+  color: #1a1209;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.meklet-f input:focus,
+.meklet-f select:focus {
+  border-color: #356046;
+  box-shadow: 0 0 0 3px rgba(53, 96, 70, 0.12);
+}
+
+.meklet-ac-wrap {
+  position: relative;
+  width: 100%;
+}
+
+.meklet-ac-wrap input {
+  width: 100%;
+  padding-right: 32px;
+}
+
+.meklet-ac-clear {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: none;
+  background: transparent;
+  color: #999;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.meklet-ac-list {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: #ffffff;
+  border: 1px solid #dcd1ba;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  margin-top: 4px;
+  z-index: 50;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.meklet-ac-item {
+  padding: 10px 14px;
+  cursor: pointer;
+  border-bottom: 1px solid #f2eee4;
+  transition: background 0.12s;
+}
+
+.meklet-ac-item:last-child {
+  border-bottom: none;
+}
+
+.meklet-ac-item:hover {
+  background: #fbf7ef;
+}
+
+.meklet-ac-main {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1a1209;
+}
+
+.meklet-ac-sub {
+  font-size: 11px;
+  color: #7a7064;
+}
+
+.meklet-seg {
+  display: inline-flex;
+  height: 38px;
+  background: #eedfc7;
+  border-radius: 8px;
+  padding: 3px;
+  gap: 2px;
+}
+
+.meklet-seg button {
+  border: none;
+  background: transparent;
+  padding: 0 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #554d42;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.meklet-seg button.on {
+  background: #ffffff;
+  color: #1a1209;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.meklet-pair {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.meklet-pair input {
+  width: 80px;
+}
+
+.meklet-chip {
+  height: 38px;
+  padding: 0 14px;
+  border: 1px solid #dcd1ba;
+  background: #ffffff;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  color: #554d42;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.15s;
+}
+
+.meklet-chip.on {
+  background: #fef2f2;
+  border-color: #ef4444;
+  color: #b91c1c;
+}
+
+.meklet-btn-primary {
+  height: 38px;
+  padding: 0 20px;
+  background: #356046;
+  color: #ffffff;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.meklet-btn-primary:hover {
+  background: #2b4e39;
+}
+
+/* 3. Rezultātu josla */
+.meklet-bar {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 12px 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  border-bottom: 1px solid var(--border-color, #e4d9c1);
+}
+
+.meklet-count {
+  font-size: 14px;
+  color: #554d42;
+  font-weight: 500;
+}
+
+.meklet-count b {
+  color: #1a1209;
+  font-weight: 700;
+}
+
+.meklet-bar-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.meklet-sort-select {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #554d42;
+}
+
+.meklet-sort-select select {
+  height: 32px;
+  padding: 0 10px;
+  font-size: 12px;
+  border: 1px solid #dcd1ba;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #1a1209;
+  font-family: inherit;
+}
+
+.meklet-map-btn {
+  height: 32px;
+  padding: 0 14px;
+  border: 1px solid #dcd1ba;
+  background: #ffffff;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  color: #1a1209;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.15s;
+}
+
+.meklet-map-btn.on {
+  background: #356046;
+  border-color: #356046;
+  color: #ffffff;
+}
+
+.meklet-follow-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #554d42;
+  cursor: pointer;
+}
+
+/* 4. Satura izkārtojums (Tabula un Split-Screen karte) */
+.meklet-content {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 16px 24px 60px;
+  min-height: 480px;
+}
+
+.meklet-content.split {
+  display: grid;
+  grid-template-columns: 1fr 480px;
+  gap: 20px;
+  align-items: start;
+}
+
+.meklet-content.full {
+  display: block;
+}
+
+.meklet-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  background: #ffffff;
+  border: 1px solid #e4d9c1;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.meklet-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 13px;
+}
+
+.meklet-table th {
+  background: #fbf7ef;
+  padding: 12px 14px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #7a7064;
+  border-bottom: 1px solid #e4d9c1;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.meklet-table th.sortable {
+  cursor: pointer;
+}
+
+.meklet-table th.sortable:hover {
+  color: #1a1209;
+}
+
+.meklet-tr {
+  border-bottom: 1px solid #f2eee4;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.meklet-tr:last-child {
+  border-bottom: none;
+}
+
+.meklet-tr:hover {
+  background: #fdfaf2;
+}
+
+.meklet-table td {
+  padding: 12px 14px;
+  vertical-align: middle;
+  color: #1a1209;
+}
+
+.meklet-td-photo {
+  width: 76px;
+  padding: 8px 10px;
+}
+
+.meklet-thumb-box {
+  position: relative;
+  width: 64px;
+  height: 48px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #eedfc7;
+}
+
+.meklet-thumb-box img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.meklet-photo-count {
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  background: rgba(0, 0, 0, 0.65);
+  color: #ffffff;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 4px;
+  border-radius: 4px;
+}
+
+.meklet-thumb-placeholder {
+  width: 64px;
+  height: 48px;
+  border-radius: 6px;
+  background: #f0e9dc;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  color: #999;
+}
+
+.meklet-item-title {
+  font-weight: 700;
+  font-size: 13px;
+  color: #1a1209;
+  margin-bottom: 2px;
+}
+
+.meklet-item-addr {
+  font-size: 12px;
+  color: #7a7064;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.meklet-cad-tag {
+  background: #f0e9dc;
+  color: #554d42;
+  font-family: monospace;
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+.meklet-td-price {
+  white-space: nowrap;
+}
+
+.meklet-price-val {
+  font-weight: 800;
+  font-size: 14px;
+  color: #1a1209;
+}
+
+.meklet-drop-badge {
+  display: inline-block;
+  background: #fee2e2;
+  color: #dc2626;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 5px;
+  border-radius: 4px;
+  margin-top: 2px;
+}
+
+.meklet-days-badge {
+  display: inline-block;
+  background: #f0e9dc;
+  color: #554d42;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 12px;
+  white-space: nowrap;
+}
+
+.meklet-portal-pill {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+
+.meklet-portal-pill.ss {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.meklet-portal-pill.c24 {
+  background: #ffedd5;
+  color: #c2410c;
+}
+
+.meklet-portal-pill.auc {
+  background: #f3e8ff;
+  color: #6b21a8;
+}
+
+.meklet-ext-link {
+  color: #0277bd;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.meklet-ext-link:hover {
+  text-decoration: underline;
+}
+
+/* Split-screen karte */
+.meklet-map-column {
+  position: sticky;
+  top: 80px;
+  height: 640px;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid #e4d9c1;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
+  background: #f0e9dc;
+}
+
+.meklet-map-inner {
+  width: 100%;
+  height: 100%;
+}
+
+/* Paginācija */
+.meklet-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 20px;
+  background: #fdfaf2;
+  border-top: 1px solid #e4d9c1;
+}
+
+.meklet-pg-btn {
+  height: 34px;
+  padding: 0 16px;
+  border: 1px solid #dcd1ba;
+  background: #ffffff;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  color: #1a1209;
+  transition: all 0.15s;
+}
+
+.meklet-pg-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.meklet-pg-btn:not(:disabled):hover {
+  background: #fbf7ef;
+  border-color: #356046;
+}
+
+.meklet-pg-info {
+  font-size: 13px;
+  color: #554d42;
+}
+
+.meklet-loading,
+.meklet-empty {
+  padding: 60px 20px;
+  text-align: center;
+  color: #7a7064;
+  font-size: 14px;
+}
+
+.meklet-spinner {
+  width: 28px;
+  height: 28px;
+  border: 3px solid #e4d9c1;
+  border-top-color: #356046;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin: 0 auto 12px;
+}
+
+/* Responsive pielāgojumi */
+@media (max-width: 1024px) {
+  .meklet-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .meklet-modes-col {
+    align-items: flex-start;
+  }
+  .meklet-content.split {
+    grid-template-columns: 1fr;
+  }
+  .meklet-map-column {
+    height: 400px;
+    position: static;
+  }
+}
+
+
 
 
 
