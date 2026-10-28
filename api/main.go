@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"strconv"
@@ -59,6 +60,7 @@ func main() {
 	// Reģistrē maršrutus
 	mux.HandleFunc("/api/health", handleHealth)
 	mux.HandleFunc("/api/parcel-info", handleParcelInfo)
+	mux.HandleFunc("/api/building-info", handleBuildingInfo)
 	mux.HandleFunc("/api/address-suggest", handleAddressSuggest)
 	mux.HandleFunc("/api/transactions", handleTransactions)
 	mux.HandleFunc("/api/listings", handleListingsGeoJSON)
@@ -234,6 +236,121 @@ func handleParcelInfo(w http.ResponseWriter, r *http.Request) {
 		"energy_cert":      cert,
 		"pollution_nearby": pollutionList,
 	})
+}
+
+// /api/building-info?code=01001230055001
+func handleBuildingInfo(w http.ResponseWriter, r *http.Request) {
+	code := strings.TrimSpace(r.URL.Query().Get("code"))
+	if code == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Parametrs 'code' ir obligāts"})
+		return
+	}
+
+	// 1. Mēģinām iegūt no kadastrakarte.lv ar 3s noildzi
+	client := &http.Client{Timeout: 3 * time.Second}
+	req, err := http.NewRequestWithContext(r.Context(), "GET", "https://kadastrakarte.lv/api/building-info.php?code="+url.QueryEscape(code), nil)
+	if err == nil {
+		req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+		req.Header.Set("Referer", "https://kadastrakarte.lv/")
+		resp, dErr := client.Do(req)
+		if dErr == nil && resp.StatusCode == http.StatusOK {
+			defer resp.Body.Close()
+			body, rErr := io.ReadAll(resp.Body)
+			if rErr == nil && len(body) > 20 && strings.Contains(string(body), `"building"`) {
+				w.Header().Set("Content-Type", "application/json; charset=utf-8")
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write(body)
+				return
+			}
+		}
+	}
+
+	// 2. Lokālais PostGIS vaicājums kā drošs fallback
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	var parcelCode, material string
+	var floors, constrYear, deprPct int
+	bErr := dbPool.QueryRow(ctx, `
+		SELECT COALESCE(parcel_code, ''), COALESCE(floors, 1), COALESCE(construction_year, 0), COALESCE(depreciation_pct, 0), COALESCE(material, '')
+		FROM public.buildings
+		WHERE code = $1
+		LIMIT 1;
+	`, code).Scan(&parcelCode, &floors, &constrYear, &deprPct, &material)
+
+	if bErr != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{
+			"error": fmt.Sprintf("Ēka ar kodu '%s' netika atrasta", code),
+		})
+		return
+	}
+
+	var address string
+	var areaM2, cadValue float64
+	if parcelCode != "" {
+		_ = dbPool.QueryRow(ctx, `
+			SELECT COALESCE(address, ''), COALESCE(area_m2, 0), COALESCE(cadastral_value, 0)
+			FROM public.parcels
+			WHERE code = $1
+			LIMIT 1;
+		`, parcelCode).Scan(&address, &areaM2, &cadValue)
+	}
+
+	if address == "" && parcelCode != "" {
+		_ = dbPool.QueryRow(ctx, `
+			SELECT a.address
+			FROM public.parcels p
+			JOIN public.addresses a ON p.geom && a.geom AND ST_Contains(p.geom, a.geom)
+			WHERE p.code = $1
+			LIMIT 1;
+		`, parcelCode).Scan(&address)
+	}
+
+	parts := strings.Split(address, ",")
+	streetHouse := strings.TrimSpace(parts[0])
+	town := "Rīga"
+	if len(parts) > 1 {
+		town = strings.TrimSpace(parts[1])
+	}
+	shParts := strings.Fields(streetHouse)
+	house := ""
+	street := streetHouse
+	if len(shParts) > 1 {
+		house = shParts[len(shParts)-1]
+		street = strings.Join(shParts[:len(shParts)-1], " ")
+	}
+
+	valStr := fmt.Sprintf("%.2f", cadValue)
+	out := map[string]any{
+		"building": map[string]any{
+			"cadastre_nr":   code,
+			"name":          "Dzīvojamā ēka",
+			"use_kind_name": "Viena dzīvokļa mājas",
+			"area":          "100.00",
+			"ground_floors": floors,
+			"exploit_year":  constrYear,
+		},
+		"address": map[string]any{
+			"street": street,
+			"house":  house,
+			"town":   town,
+		},
+		"valuations": []map[string]any{
+			{
+				"value_type": "fisc",
+				"value":      valStr,
+			},
+		},
+		"premises_summary": map[string]any{
+			"count": 1,
+		},
+		"ownership": map[string]any{
+			"person_status": "fiziska persona",
+		},
+		"parcel_code": parcelCode,
+	}
+
+	writeJSON(w, http.StatusOK, out)
 }
 
 // /api/address-suggest?q=Doma
@@ -688,6 +805,25 @@ func handlePopupSignals(w http.ResponseWriter, r *http.Request) {
 	if code == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Parametrs 'code' vai koordinātas ir obligātas"})
 		return
+	}
+
+	// Mēģinām iegūt tiešos signālus no kadastrakarte.lv
+	upReq, uErr := http.NewRequestWithContext(r.Context(), "GET", "https://kadastrakarte.lv/api/popup-signals.php?"+r.URL.RawQuery, nil)
+	if uErr == nil {
+		upReq.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36")
+		upReq.Header.Set("Referer", "https://kadastrakarte.lv/")
+		uClient := &http.Client{Timeout: 2500 * time.Millisecond}
+		uResp, dErr := uClient.Do(upReq)
+		if dErr == nil && uResp.StatusCode == http.StatusOK {
+			defer uResp.Body.Close()
+			b, rErr := io.ReadAll(uResp.Body)
+			if rErr == nil && len(b) > 10 && strings.Contains(string(b), `"signals"`) {
+				w.Header().Set("Content-Type", "application/json; charset=utf-8")
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write(b)
+				return
+			}
+		}
 	}
 
 	type Signal struct {

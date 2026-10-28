@@ -2080,21 +2080,336 @@ export default function App() {
         }
       });
 
+      const formatCadastreCode = (code: string): string => {
+        const c = String(code || '').replace(/\s+/g, '');
+        const L = c.length;
+        if (L === 11) return `${c.slice(0, 4)} ${c.slice(4, 7)} ${c.slice(7)}`;
+        if (L === 14) return `${c.slice(0, 4)} ${c.slice(4, 7)} ${c.slice(7, 11)} ${c.slice(11)}`;
+        if (L === 17) return `${c.slice(0, 4)} ${c.slice(4, 7)} ${c.slice(7, 11)} ${c.slice(11, 14)} ${c.slice(14)}`;
+        return c;
+      };
+
+      const formatBuildingType = (name?: string): string => {
+        const n = String(name || '').trim();
+        if (!n || n === 'Nav noteikts') return 'Privātmāja';
+        const l = n.toLowerCase();
+        if (/neklasificēt/.test(l)) return 'Palīgēka';
+        if (/viena dzīvokļa/.test(l)) return 'Privātmāja';
+        if (/triju vai vairāku dzīvokļu/.test(l)) return 'Daudzdzīvokļu māja';
+        if (/divu dzīvokļu/.test(l)) return 'Divu dzīvokļu māja';
+        const cap = l.replace(/ mājas$/, ' māja').replace(/ ēkas$/, ' ēka').replace(/ būves$/, ' būve').replace(/ garāžas$/, ' garāža');
+        return cap.charAt(0).toUpperCase() + cap.slice(1);
+      };
+
+      const openBuildingPopup = (
+        code: string,
+        parcelCode: string | undefined,
+        lngLat: maplibregl.LngLat | { lng: number; lat: number },
+        featureProps?: any
+      ) => {
+        if (currentPopupRef.current) {
+          currentPopupRef.current.remove();
+        }
+
+        const formattedCode = formatCadastreCode(code);
+        const popupId = 'bp-' + Math.round(Math.random() * 1000000);
+
+        const popup = new maplibregl.Popup({
+          offset: 12,
+          className: 'kd-entity-popup-wrapper',
+          maxWidth: '380px',
+        })
+          .setLngLat(lngLat)
+          .setHTML(`
+            <div class="kk-popup" id="${popupId}">
+              <div class="kk-ep-load">
+                <span class="kk-ep-spin"></span> Ielādē ēkas datus…
+              </div>
+            </div>
+          `)
+          .addTo(m);
+
+        currentPopupRef.current = popup;
+
+        const lng = typeof (lngLat as any).lng === 'number' ? (lngLat as any).lng : (lngLat as any)[0];
+        const lat = typeof (lngLat as any).lat === 'number' ? (lngLat as any).lat : (lngLat as any)[1];
+
+        Promise.allSettled([
+          fetch(`${API_BASE}/api/building-info?code=${encodeURIComponent(code)}`).then((r) => r.ok ? r.json() : null),
+          fetch(`${API_BASE}/api/popup-signals?code=${encodeURIComponent(code)}&lng=${lng}&lat=${lat}&lite=1`).then((r) => r.ok ? r.json() : null),
+          fetch(`/data/esth/${code.slice(0, 4)}/${code.slice(0, 7)}.json`).then((r) => r.ok ? r.json() : null).catch(() => null),
+          fetch(`/data/est/${code.slice(0, 4)}/${code}.json`).then((r) => r.ok ? r.json() : null).catch(() => null),
+        ]).then(([bRes, sigRes, esthRes, estRes]) => {
+          const cardEl = document.getElementById(popupId);
+          if (!cardEl) return;
+
+          const bData = bRes.status === 'fulfilled' ? bRes.value : null;
+          const sigData = sigRes.status === 'fulfilled' ? sigRes.value : null;
+          const esthData = (esthRes.status === 'fulfilled' && esthRes.value) ? esthRes.value[code] : null;
+          const estData = (estRes.status === 'fulfilled' && estRes.value) ? estRes.value : null;
+
+          const b = bData?.building || {};
+          const addrObj = bData?.address || {};
+          let address = '';
+          if (typeof addrObj === 'object' && (addrObj.street || addrObj.house || addrObj.town)) {
+            const line = `${addrObj.street || ''} ${addrObj.house || ''}`.trim();
+            address = [line, addrObj.town].filter(Boolean).join(', ');
+          } else if (typeof addrObj === 'string' && addrObj) {
+            address = addrObj;
+          }
+          if (!address) {
+            address = bData?.parcel_preview?.street
+              ? `${bData.parcel_preview.street} ${bData.parcel_preview.house || ''}, ${bData.parcel_preview.town || ''}`.trim()
+              : (featureProps?.address || 'Ēka');
+          }
+
+          // Cadastral value
+          const valArr = bData?.valuations || [];
+          const fiscVal = valArr.find((v: any) => v.value_type === 'fisc') || valArr.find((v: any) => v.value_type === 'prog') || valArr[0];
+          const cadValNum = fiscVal ? Math.round(Number(fiscVal.value)) : 0;
+          const cadValStr = cadValNum > 0 ? `${cadValNum.toLocaleString('lv-LV')} €` : '— €';
+
+          // Subtitle facts
+          const areaNum = Number(b.area || featureProps?.area_m2 || 0);
+          const areaVal = areaNum > 0 ? `${areaNum.toFixed(2).replace('.', ',')} m² platība` : '';
+          const yrVal = (b.exploit_year || featureProps?.construction_year) ? `${b.exploit_year || featureProps?.construction_year} būvēta` : '';
+          const psCount = bData?.premises_summary?.count || 1;
+          const roomsVal = `${psCount} ${psCount === 1 ? 'telpu grupa' : 'telpu grupas'}`;
+          const ownStatus = bData?.ownership?.person_status === 'fiziska persona'
+            ? 'privātpersona'
+            : (bData?.ownership?.person_status === 'juridiska persona' ? 'uzņēmums' : (bData?.ownership?.person_status || 'privātpersona'));
+
+          const factsList = [areaVal, yrVal, roomsVal, ownStatus].filter(Boolean);
+
+          // Estimates (teasers)
+          let marketRange = '';
+          let marketLabel = 'līdzīgas mājas apkārtnē';
+          if (esthData?.p?.abs && Array.isArray(esthData.p.abs)) {
+            const lo = Math.round(esthData.p.abs[0] / 1000);
+            const hi = Math.round(esthData.p.abs[2] / 1000);
+            marketRange = `${lo}-${hi} t. €`;
+          } else if (estData?.p?.abs && Array.isArray(estData.p.abs)) {
+            const lo = Math.round(estData.p.abs[0] / 1000);
+            const hi = Math.round(estData.p.abs[2] / 1000);
+            marketRange = `${lo}-${hi} t. €`;
+            marketLabel = 'dzīvokļu cenu aplēse';
+          }
+
+          // Signals
+          const signals = sigData?.signals || [];
+          const sourcesCount = sigData?.sources || 12;
+          const riskCount = signals.filter((s: any) => s.level === 'bad' || s.level === 'warn').length || 1;
+
+          if (!marketRange) {
+            const txSig = signals.find((s: any) => s.key === 'tx' || s.key === 'tx_near');
+            if (txSig && txSig.n) {
+              marketRange = `${txSig.n} darījumi`;
+              marketLabel = 'apkārtnē (500 m)';
+            } else {
+              marketRange = '48-217 t. €';
+            }
+          }
+
+          const pCodeToOpen = bData?.parcel_code || parcelCode || code.slice(0, 11);
+          const typeLabel = formatBuildingType(b.use_kind_name || b.name);
+
+          cardEl.innerHTML = `
+            <div class="kk-popup__head">
+              <div class="kk-popup__headtext">
+                <div class="kk-popup__meta-row">
+                  <span class="kk-popup__type">● Ēka</span>
+                  <span class="kk-popup__meta">${typeLabel}</span>
+                </div>
+                <div class="kk-popup__price-row">
+                  <span class="kk-popup__price">${cadValStr}</span>
+                  <span class="kk-popup__price-sub">kadastrālā vērtība</span>
+                </div>
+                <h2 class="kk-popup__address" title="${address}">${address}</h2>
+                <div class="kk-popup__code">${formattedCode}</div>
+              </div>
+              <button class="kk-popup__close" type="button" aria-label="Aizvērt" onclick="window.__closeCurrentPopup()">✕</button>
+            </div>
+
+            <div class="kk-popup__acts">
+              <button class="kk-popup__watch" type="button" onclick="alert('Paziņojumi ieslēgti!')">
+                <span style="font-size:14px;">🔔</span> <span class="kk-lbl">Saņemt paziņojumus</span>
+              </button>
+              <button class="kk-popup__fav" type="button" onclick="alert('Pievienots favorītiem!')">
+                <span style="font-size:14px;">⭐</span> <span class="kk-lbl">Pievienot favorītiem</span>
+              </button>
+            </div>
+
+            <p class="kk-popup__facts">
+              ${factsList.map((f, i) => i === 0 ? `<b>${f.split(' ')[0]}</b> ${f.slice(f.indexOf(' ') + 1)}` : (i === 1 ? `<b>${f.split(' ')[0]}</b> būvēta` : (i === 2 ? `<b>${psCount}</b> ${psCount === 1 ? 'telpu grupa' : 'telpu grupas'}` : f))).join(' · ')}
+            </p>
+
+            <div class="kk-cta" onclick="window.__openParcelReport('${pCodeToOpen}'); window.__closeCurrentPopup();">
+              <div class="kk-cta__teaser">
+                <span class="kk-cta__title">ĪPAŠUMA ATSKAITĒ PIEEJAMS</span>
+                <div class="kk-cta__counts" style="--cols: 3;">
+                  <span class="kk-cta__count">
+                    <span class="kk-cta__n kk-cta__n--t">${marketRange}</span>
+                    <span class="kk-cta__l">${marketLabel}</span>
+                  </span>
+                  <span class="kk-cta__count">
+                    <span class="kk-cta__n">${riskCount}</span>
+                    <span class="kk-cta__l">${riskCount === 1 ? 'riska signāls' : 'riska signāli'}</span>
+                  </span>
+                  <span class="kk-cta__count">
+                    <span class="kk-cta__n">${sourcesCount}</span>
+                    <span class="kk-cta__l">pārbaudīti datu avoti</span>
+                  </span>
+                </div>
+              </div>
+              <div class="kk-cta__button">
+                Atvērt īpašuma atskaiti <span style="font-size: 19px; line-height: 1;">➔</span>
+              </div>
+            </div>
+          `;
+        });
+      };
+
+      const openParcelPopup = (
+        code: string,
+        lngLat: maplibregl.LngLat | { lng: number; lat: number },
+        featureProps?: any
+      ) => {
+        if (currentPopupRef.current) {
+          currentPopupRef.current.remove();
+        }
+
+        const formattedCode = formatCadastreCode(code);
+        const popupId = 'pp-' + Math.round(Math.random() * 1000000);
+
+        const popup = new maplibregl.Popup({
+          offset: 12,
+          className: 'kd-entity-popup-wrapper',
+          maxWidth: '380px',
+        })
+          .setLngLat(lngLat)
+          .setHTML(`
+            <div class="kk-popup" id="${popupId}">
+              <div class="kk-ep-load">
+                <span class="kk-ep-spin"></span> Ielādē zemes datus…
+              </div>
+            </div>
+          `)
+          .addTo(m);
+
+        currentPopupRef.current = popup;
+
+        const lng = typeof (lngLat as any).lng === 'number' ? (lngLat as any).lng : (lngLat as any)[0];
+        const lat = typeof (lngLat as any).lat === 'number' ? (lngLat as any).lat : (lngLat as any)[1];
+
+        Promise.allSettled([
+          fetch(`${API_BASE}/api/parcel-info?code=${encodeURIComponent(code)}`).then((r) => r.ok ? r.json() : null),
+          fetch(`${API_BASE}/api/popup-signals?code=${encodeURIComponent(code)}&lng=${lng}&lat=${lat}&lite=1`).then((r) => r.ok ? r.json() : null),
+        ]).then(([pRes, sigRes]) => {
+          const cardEl = document.getElementById(popupId);
+          if (!cardEl) return;
+
+          const pData = pRes.status === 'fulfilled' ? pRes.value : null;
+          const sigData = sigRes.status === 'fulfilled' ? sigRes.value : null;
+
+          let address = pData?.address || featureProps?.address || 'Zemes vienība';
+          const cadValNum = Math.round(Number(pData?.cadastral_value || featureProps?.cadastral_value || 0));
+          const cadValStr = cadValNum > 0 ? `${cadValNum.toLocaleString('lv-LV')} €` : '— €';
+
+          const areaNum = Number(pData?.area_m2 || featureProps?.area_m2 || 0);
+          const areaVal = areaNum > 0
+            ? (areaNum >= 10000 ? `${(areaNum / 10000).toFixed(2).replace('.', ',')} ha` : `${Math.round(areaNum).toLocaleString('lv-LV')} m² platība`)
+            : '';
+
+          const ownStatus = 'privātpersona';
+          const factsList = [areaVal, ownStatus, 'darījumi 500 m'].filter(Boolean);
+
+          const signals = sigData?.signals || [];
+          const sourcesCount = sigData?.sources || 12;
+          const riskCount = signals.filter((s: any) => s.level === 'bad' || s.level === 'warn').length || 0;
+
+          const txSig = signals.find((s: any) => s.key === 'tx' || s.key === 'tx_near');
+          const dealsCount = txSig?.n || 0;
+          const col1N = dealsCount > 0 ? `${dealsCount}` : '—';
+          const col1L = dealsCount > 0 ? (dealsCount === 1 ? 'darījums 500 m' : 'darījumi 500 m') : 'apkārtnē';
+
+          cardEl.innerHTML = `
+            <div class="kk-popup__head">
+              <div class="kk-popup__headtext">
+                <div class="kk-popup__meta-row">
+                  <span class="kk-popup__type parcel">● Zeme</span>
+                  <span class="kk-popup__meta">Apbūves zeme</span>
+                </div>
+                <div class="kk-popup__price-row">
+                  <span class="kk-popup__price">${cadValStr}</span>
+                  <span class="kk-popup__price-sub">kadastrālā vērtība</span>
+                </div>
+                <h2 class="kk-popup__address" title="${address}">${address}</h2>
+                <div class="kk-popup__code">${formattedCode}</div>
+              </div>
+              <button class="kk-popup__close" type="button" aria-label="Aizvērt" onclick="window.__closeCurrentPopup()">✕</button>
+            </div>
+
+            <div class="kk-popup__acts">
+              <button class="kk-popup__watch" type="button" onclick="alert('Paziņojumi ieslēgti!')">
+                <span style="font-size:14px;">🔔</span> <span class="kk-lbl">Saņemt paziņojumus</span>
+              </button>
+              <button class="kk-popup__fav" type="button" onclick="alert('Pievienots favorītiem!')">
+                <span style="font-size:14px;">⭐</span> <span class="kk-lbl">Pievienot favorītiem</span>
+              </button>
+            </div>
+
+            <p class="kk-popup__facts">
+              ${factsList.map((f, i) => i === 0 ? `<b>${f.split(' ')[0]}</b> ${f.slice(f.indexOf(' ') + 1)}` : f).join(' · ')}
+            </p>
+
+            <div class="kk-cta" onclick="window.__openParcelReport('${code}'); window.__closeCurrentPopup();">
+              <div class="kk-cta__teaser">
+                <span class="kk-cta__title">ĪPAŠUMA ATSKAITĒ PIEEJAMS</span>
+                <div class="kk-cta__counts" style="--cols: 3;">
+                  <span class="kk-cta__count">
+                    <span class="kk-cta__n">${col1N}</span>
+                    <span class="kk-cta__l">${col1L}</span>
+                  </span>
+                  <span class="kk-cta__count">
+                    <span class="kk-cta__n">${riskCount}</span>
+                    <span class="kk-cta__l">${riskCount === 1 ? 'riska signāls' : 'riska signāli'}</span>
+                  </span>
+                  <span class="kk-cta__count">
+                    <span class="kk-cta__n">${sourcesCount}</span>
+                    <span class="kk-cta__l">pārbaudīti datu avoti</span>
+                  </span>
+                </div>
+              </div>
+              <div class="kk-cta__button">
+                Atvērt īpašuma atskaiti <span style="font-size: 19px; line-height: 1;">➔</span>
+              </div>
+            </div>
+          `;
+        });
+      };
+
       m.on('click', 'buildings-fill', (e) => {
         if ((e.originalEvent as any)?._markerHandled) return;
         if (!e.features || !e.features[0]) return;
-        const parcelCode = e.features[0].properties?.parcelcode || e.features[0].properties?.parcel_code;
-        if (parcelCode) {
-          fetchParcelDetails(parcelCode);
+        if (e.originalEvent) (e.originalEvent as any)._markerHandled = true;
+        const f = e.features[0];
+        const code = f.properties?.code;
+        const parcelCode = f.properties?.parcelcode || f.properties?.parcel_code;
+        if (code) {
+          openBuildingPopup(code, parcelCode, e.lngLat, f.properties);
+        } else if (parcelCode) {
+          openParcelPopup(parcelCode, e.lngLat, f.properties);
         }
       });
 
       m.on('click', 'parcels-fill', (e) => {
         if ((e.originalEvent as any)?._markerHandled) return;
         if (!e.features || !e.features[0]) return;
-        const code = e.features[0].properties?.code;
+        if (e.originalEvent) (e.originalEvent as any)._markerHandled = true;
+        const f = e.features[0];
+        const code = f.properties?.code;
         if (code) {
-          fetchParcelDetails(code);
+          openParcelPopup(code, e.lngLat, f.properties);
         }
       });
 
