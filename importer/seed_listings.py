@@ -288,7 +288,8 @@ def fetch_and_save_histories(candidates):
                     old_pr = prev_price if prev_price is not None else ch_price
                     new_pr = ch_price
                     delta_amt = new_pr - old_pr
-                    delta_pct = (delta_amt / old_pr * 100.0) if old_pr and old_pr > 0 else 0.0
+                    raw_pct = (delta_amt / old_pr * 100.0) if old_pr and old_pr > 0 else 0.0
+                    delta_pct = max(-999999.0, min(999999.0, raw_pct))
 
                     if delta_amt != 0:
                         cur.execute("""

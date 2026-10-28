@@ -53,7 +53,7 @@ CREATE TABLE IF NOT EXISTS public.listing_price_changes (
     old_price NUMERIC(14, 2) NOT NULL,
     new_price NUMERIC(14, 2) NOT NULL,
     delta_amount NUMERIC(14, 2) NOT NULL,               -- new_price - old_price (negatīvs, ja samazināta)
-    delta_percent NUMERIC(6, 2) NOT NULL,               -- procentuālā izmaiņa
+    delta_percent NUMERIC(12, 2) NOT NULL,              -- procentuālā izmaiņa
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
