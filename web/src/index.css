@@ -3112,13 +3112,18 @@ body:has(.panel) #zoom-ctl {
 }
 
 .meklet-portal-pill.ss {
-  background: #dbeafe;
-  color: #1e40af;
+  background: #fdeee6;
+  color: #b5441a;
 }
 
 .meklet-portal-pill.c24 {
-  background: #ffedd5;
-  color: #c2410c;
+  background: #e8f0fb;
+  color: #1565c0;
+}
+
+.meklet-portal-pill.pp {
+  background: #fdf0dc;
+  color: #a4620b;
 }
 
 .meklet-portal-pill.auc {

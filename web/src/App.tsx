@@ -260,7 +260,8 @@ export default function App() {
     setHistoryModal({ open: true, item, history: null, loading: true });
     const mid = item.mid || item.id || '';
     const portal = item.portal || 'ss.com';
-    fetch(`${API_BASE}/api/listing-history?mid=${mid}&portal=${portal}`)
+    const idParam = item.id ? `&id=${item.id}` : '';
+    fetch(`${API_BASE}/api/listing-history?mid=${mid}&portal=${portal}${idParam}`)
       .then((r) => r.json())
       .then((data) => {
         setHistoryModal((prev) => ({

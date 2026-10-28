@@ -15,6 +15,24 @@ interface MekletViewProps {
   onClose?: () => void;
 }
 
+// Portālu plāksnīšu un nosaukumu atpazīšana
+const getPortalBadge = (portal?: string) => {
+  const p = (portal || '').toLowerCase().trim();
+  if (p === 'ss.com' || p === 'ss') {
+    return { name: 'SS.com', cls: 'ss' };
+  }
+  if (p === 'city24' || p === 'city24.lv' || p.includes('city24')) {
+    return { name: 'City24', cls: 'c24' };
+  }
+  if (p === 'pp.lv' || p === 'pp' || p.includes('pp.lv')) {
+    return { name: 'PP.lv', cls: 'pp' };
+  }
+  if (p.includes('izsole') || p.includes('ta.gov.lv')) {
+    return { name: 'Izsole', cls: 'auc' };
+  }
+  return { name: portal || 'Cits', cls: 'c24' };
+};
+
 export const MekletView: React.FC<MekletViewProps> = ({
   onOpenListingModal,
   onOpenParcelModal,
@@ -521,7 +539,8 @@ export const MekletView: React.FC<MekletViewProps> = ({
               <select value={portal} onChange={(e) => { setPortal(e.target.value); setPage(1); }}>
                 <option value="all">Visi portāli</option>
                 <option value="ss.com">SS.com</option>
-                <option value="city24.lv">City24.lv</option>
+                <option value="city24">City24</option>
+                <option value="pp.lv">PP.lv</option>
                 <option value="izsoles.ta.gov.lv">Izsoles</option>
               </select>
             </div>
@@ -779,9 +798,14 @@ export const MekletView: React.FC<MekletViewProps> = ({
                           <span className="meklet-days-badge">{row.days || 1} d.</span>
                         </td>
                         <td>
-                          <span className={`meklet-portal-pill ${row.portal === 'ss.com' ? 'ss' : row.portal === 'city24.lv' ? 'c24' : 'auc'}`}>
-                            {row.portal === 'ss.com' ? 'SS.com' : row.portal === 'city24.lv' ? 'City24' : 'Izsole'}
-                          </span>
+                          {(() => {
+                            const pb = getPortalBadge(row.portal);
+                            return (
+                              <span className={`meklet-portal-pill ${pb.cls}`}>
+                                {pb.name}
+                              </span>
+                            );
+                          })()}
                         </td>
                       </>
                     )}

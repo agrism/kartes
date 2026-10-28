@@ -834,7 +834,7 @@ func handleListingHistory(w http.ResponseWriter, r *http.Request) {
 				l.images, COALESCE(l.area_m2, 0), COALESCE(l.rooms, 0), 
 				COALESCE(l.floor, 0), COALESCE(l.address_text, ''), COALESCE(l.town, '')
 			FROM public.listings l
-			WHERE l.source = $1 AND l.external_id = $2
+			WHERE (l.source = $1 OR (l.source = 'city24' AND $1 = 'city24.lv') OR (l.source = 'city24.lv' AND $1 = 'city24') OR (l.source = 'pp.lv' AND $1 = 'pp')) AND l.external_id = $2
 			LIMIT 1;
 		`, portal, mid).Scan(
 			&id, &source, &extID, &dType, &u,
@@ -1530,9 +1530,19 @@ func searchListings(w http.ResponseWriter, ctx context.Context, qParams url.Valu
 		portal = strings.ToLower(qParams.Get("source"))
 	}
 	if portal != "" && portal != "all" {
-		whereClauses = append(whereClauses, fmt.Sprintf("l.source = $%d", argIdx))
-		args = append(args, portal)
-		argIdx++
+		if portal == "city24" || portal == "city24.lv" {
+			whereClauses = append(whereClauses, "(l.source = 'city24' OR l.source = 'city24.lv')")
+		} else if portal == "pp" || portal == "pp.lv" {
+			whereClauses = append(whereClauses, "(l.source = 'pp.lv' OR l.source = 'pp')")
+		} else if portal == "ss" || portal == "ss.com" {
+			whereClauses = append(whereClauses, "(l.source = 'ss.com' OR l.source = 'ss')")
+		} else if strings.Contains(portal, "izsole") || strings.Contains(portal, "ta.gov.lv") {
+			whereClauses = append(whereClauses, "(l.source ILIKE '%izsole%' OR l.source ILIKE '%ta.gov.lv%')")
+		} else {
+			whereClauses = append(whereClauses, fmt.Sprintf("l.source = $%d", argIdx))
+			args = append(args, portal)
+			argIdx++
+		}
 	}
 
 	town := strings.TrimSpace(qParams.Get("town"))
