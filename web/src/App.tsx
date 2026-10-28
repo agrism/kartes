@@ -95,43 +95,45 @@ function formatShortPrice(price: number): string {
   return `${Math.round(price)} €`;
 }
 
-function createRoundBadge(color: string) {
-  const S = 2, W = 64, pH = 22, arH = 6, H = pH + arH, R = 5;
+function createPriceBubble(color: string, stroke?: string) {
+  const S = 2; // pixelRatio
+  const W = 56, BH = 24, R = 5, AH = 8, AW = 6;
+  const TH = BH + AH;
   const c = document.createElement('canvas');
   c.width = W * S;
-  c.height = H * S;
+  c.height = TH * S;
   const ctx = c.getContext('2d');
   if (!ctx) return null;
   ctx.scale(S, S);
-  const cx = W / 2, aw = 5;
   ctx.fillStyle = color;
   ctx.beginPath();
   ctx.moveTo(R, 0);
   ctx.lineTo(W - R, 0);
   ctx.arcTo(W, 0, W, R, R);
-  ctx.lineTo(W, pH - R);
-  ctx.arcTo(W, pH, W - R, pH, R);
-  ctx.lineTo(cx + aw, pH);
-  ctx.lineTo(cx, pH + arH);
-  ctx.lineTo(cx - aw, pH);
-  ctx.lineTo(R, pH);
-  ctx.arcTo(0, pH, 0, pH - R, R);
+  ctx.lineTo(W, BH - R);
+  ctx.arcTo(W, BH, W - R, BH, R);
+  ctx.lineTo(W / 2 + AW, BH);
+  ctx.lineTo(W / 2, TH);
+  ctx.lineTo(W / 2 - AW, BH);
+  ctx.lineTo(R, BH);
+  ctx.arcTo(0, BH, 0, BH - R, R);
   ctx.lineTo(0, R);
   ctx.arcTo(0, 0, R, 0, R);
   ctx.closePath();
   ctx.fill();
+  if (stroke) {
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = stroke;
+    ctx.stroke();
+  }
   const d = ctx.getImageData(0, 0, c.width, c.height);
   return {
     width: c.width,
     height: c.height,
     data: new Uint8Array(d.data.buffer),
-    // Two-sided stretch so the arrow in the middle stays fixed in width and centered
-    stretchX: [
-      [R * S, (cx - aw) * S],
-      [(cx + aw) * S, (W - R) * S],
-    ] as [number, number][],
-    stretchY: [[R * S, (pH - R) * S]] as [number, number][],
-    content: [R * S, 2 * S, (W - R) * S, (pH - 2) * S] as [number, number, number, number],
+    stretchX: [[10 * S, (W - 10) * S]] as [number, number][],
+    stretchY: [[6 * S, (BH - 6) * S]] as [number, number][],
+    content: [2 * S, 2 * S, (W - 2) * S, (BH - 2) * S] as [number, number, number, number],
   };
 }
 
@@ -213,8 +215,8 @@ export default function App() {
   const [showTransports, setShowTransports] = useState(false);
   const [isSatellite, setIsSatellite] = useState(false);
 
-  // Slāņu panelis (atvērts/aizvērts) - pēc noklusējuma sakļauts kā kadastrakarte.lv
-  const [isLayersOpen, setIsLayersOpen] = useState(false);
+  // Slāņu panelis (atvērts/aizvērts) - pēc noklusējuma atvērts uz datora ekrāniem
+  const [isLayersOpen, setIsLayersOpen] = useState(() => (typeof window !== 'undefined' ? window.innerWidth > 820 : true));
   const showTransactionsRef = useRef(showTransactions);
   showTransactionsRef.current = showTransactions;
   const showListingsSSRef = useRef(showListingsSS);
@@ -672,191 +674,37 @@ export default function App() {
       m.on('mouseenter', 'mix-clusters', () => { m.getCanvas().style.cursor = 'pointer'; });
       m.on('mouseleave', 'mix-clusters', () => { m.getCanvas().style.cursor = ''; });
 
-      // 0.2 Cenu bērkas (zaļās sludinājumiem, dzintara izsolēm)
-      const greenBadge = createRoundBadge('#2f8a55');
-      if (greenBadge && !m.hasImage('badge-green')) {
-        m.addImage(
-          'badge-green',
-          { width: greenBadge.width, height: greenBadge.height, data: greenBadge.data },
-          { pixelRatio: 2, stretchX: greenBadge.stretchX, stretchY: greenBadge.stretchY, content: greenBadge.content }
-        );
+      // 0.2 Cenu birkas (Zillow/kadastrakarte.lv stils: pārdod zaļa, īre zila, dzintara izsolēm)
+      const sellBadge = createPriceBubble('#2f8a55');
+      if (sellBadge && !m.hasImage('badge-sell')) {
+        m.addImage('badge-sell', { width: sellBadge.width, height: sellBadge.height, data: sellBadge.data },
+          { pixelRatio: 2, stretchX: sellBadge.stretchX, stretchY: sellBadge.stretchY, content: sellBadge.content });
+      }
+      if (sellBadge && !m.hasImage('badge-green')) {
+        m.addImage('badge-green', { width: sellBadge.width, height: sellBadge.height, data: sellBadge.data },
+          { pixelRatio: 2, stretchX: sellBadge.stretchX, stretchY: sellBadge.stretchY, content: sellBadge.content });
       }
 
-      const amberBadge = createRoundBadge('#c8860a');
+      const rentBadge = createPriceBubble('#1565c0');
+      if (rentBadge && !m.hasImage('badge-rent')) {
+        m.addImage('badge-rent', { width: rentBadge.width, height: rentBadge.height, data: rentBadge.data },
+          { pixelRatio: 2, stretchX: rentBadge.stretchX, stretchY: rentBadge.stretchY, content: rentBadge.content });
+      }
+
+      const amberBadge = createPriceBubble('#c8860a');
       if (amberBadge && !m.hasImage('badge-amber')) {
-        m.addImage(
-          'badge-amber',
-          { width: amberBadge.width, height: amberBadge.height, data: amberBadge.data },
-          { pixelRatio: 2, stretchX: amberBadge.stretchX, stretchY: amberBadge.stretchY, content: amberBadge.content }
-        );
+        m.addImage('badge-amber', { width: amberBadge.width, height: amberBadge.height, data: amberBadge.data },
+          { pixelRatio: 2, stretchX: amberBadge.stretchX, stretchY: amberBadge.stretchY, content: amberBadge.content });
       }
 
-      // Sludinājumu avots (apvieno visus portālus: ss.com, city24, pp.lv)
+      // Sludinājumu un izsoļu datu avoti
       m.addSource('listings-pts', {
         type: 'geojson',
         data: { type: 'FeatureCollection', features: [] },
       });
-
-      // ── ss.com slāņi ──
-      m.addLayer({
-        id: 'listings-ss-dots',
-        type: 'circle',
-        source: 'listings-pts',
-        minzoom: 13.5,
-        filter: ['in', ['get', 'portal'], ['literal', ['ss.com', 'ss']]],
-        paint: {
-          'circle-radius': ['interpolate', ['linear'], ['zoom'], 13.5, 4.5, 15, 6.0, 17, 8.0],
-          'circle-color': '#2f8a55',
-          'circle-stroke-width': 2.0,
-          'circle-stroke-color': '#ffffff',
-          'circle-opacity': 0.95,
-        },
-      });
-      m.addLayer({
-        id: 'listings-ss-badges',
-        type: 'symbol',
-        source: 'listings-pts',
-        minzoom: 13.5,
-        filter: ['all', ['in', ['get', 'portal'], ['literal', ['ss.com', 'ss']]], ['!=', ['get', 'price_short'], '']],
-        layout: {
-          'icon-image': 'badge-green',
-          'icon-anchor': 'bottom',
-          'icon-text-fit': 'both',
-          'icon-text-fit-padding': [1, 6, 1, 6],
-          'text-field': ['get', 'price_short'],
-          'text-font': ['Noto Sans Bold'],
-          'text-size': 11,
-          'text-anchor': 'bottom',
-          'text-offset': [0, -0.65],
-          'icon-allow-overlap': false,
-          'text-allow-overlap': false,
-        },
-        paint: { 'text-color': '#ffffff' },
-      });
-
-      // ── city24 slāņi ──
-      m.addLayer({
-        id: 'listings-c24-dots',
-        type: 'circle',
-        source: 'listings-pts',
-        minzoom: 13.5,
-        filter: ['in', ['get', 'portal'], ['literal', ['city24', 'city24.lv']]],
-        paint: {
-          'circle-radius': ['interpolate', ['linear'], ['zoom'], 13.5, 4.5, 15, 6.0, 17, 8.0],
-          'circle-color': '#2f8a55',
-          'circle-stroke-width': 2.0,
-          'circle-stroke-color': '#ffffff',
-          'circle-opacity': 0.95,
-        },
-      });
-      m.addLayer({
-        id: 'listings-c24-badges',
-        type: 'symbol',
-        source: 'listings-pts',
-        minzoom: 13.5,
-        filter: ['all', ['in', ['get', 'portal'], ['literal', ['city24', 'city24.lv']]], ['!=', ['get', 'price_short'], '']],
-        layout: {
-          'icon-image': 'badge-green',
-          'icon-anchor': 'bottom',
-          'icon-text-fit': 'both',
-          'icon-text-fit-padding': [1, 6, 1, 6],
-          'text-field': ['get', 'price_short'],
-          'text-font': ['Noto Sans Bold'],
-          'text-size': 11,
-          'text-anchor': 'bottom',
-          'text-offset': [0, -0.65],
-          'icon-allow-overlap': false,
-          'text-allow-overlap': false,
-        },
-        paint: { 'text-color': '#ffffff' },
-      });
-
-      // ── pp.lv slāņi ──
-      m.addLayer({
-        id: 'listings-pp-dots',
-        type: 'circle',
-        source: 'listings-pts',
-        minzoom: 13.5,
-        filter: ['in', ['get', 'portal'], ['literal', ['pp.lv', 'pp']]],
-        paint: {
-          'circle-radius': ['interpolate', ['linear'], ['zoom'], 13.5, 4.5, 15, 6.0, 17, 8.0],
-          'circle-color': '#2f8a55',
-          'circle-stroke-width': 2.0,
-          'circle-stroke-color': '#ffffff',
-          'circle-opacity': 0.95,
-        },
-      });
-      m.addLayer({
-        id: 'listings-pp-badges',
-        type: 'symbol',
-        source: 'listings-pts',
-        minzoom: 13.5,
-        filter: ['all', ['in', ['get', 'portal'], ['literal', ['pp.lv', 'pp']]], ['!=', ['get', 'price_short'], '']],
-        layout: {
-          'icon-image': 'badge-green',
-          'icon-anchor': 'bottom',
-          'icon-text-fit': 'both',
-          'icon-text-fit-padding': [1, 6, 1, 6],
-          'text-field': ['get', 'price_short'],
-          'text-font': ['Noto Sans Bold'],
-          'text-size': 11,
-          'text-anchor': 'bottom',
-          'text-offset': [0, -0.65],
-          'icon-allow-overlap': false,
-          'text-allow-overlap': false,
-        },
-        paint: { 'text-color': '#ffffff' },
-      });
-
-      // ── Izsoļu (auctions) avots un slāņi ──
       m.addSource('auctions-pts', {
         type: 'geojson',
         data: { type: 'FeatureCollection', features: [] },
-      });
-      m.addLayer({
-        id: 'auctions-dots',
-        type: 'circle',
-        source: 'auctions-pts',
-        minzoom: 12.5,
-        paint: {
-          'circle-radius': ['interpolate', ['linear'], ['zoom'], 12.5, 4.5, 15, 6.5, 17, 8.5],
-          'circle-color': '#c8860a',
-          'circle-stroke-width': 2.0,
-          'circle-stroke-color': '#ffffff',
-          'circle-opacity': 0.95,
-        },
-      });
-      m.addLayer({
-        id: 'auctions-badges',
-        type: 'symbol',
-        source: 'auctions-pts',
-        minzoom: 12.5,
-        filter: ['!=', ['get', 'price_short'], ''],
-        layout: {
-          'icon-image': 'badge-amber',
-          'icon-anchor': 'bottom',
-          'icon-text-fit': 'both',
-          'icon-text-fit-padding': [1, 6, 1, 6],
-          'text-field': ['get', 'price_short'],
-          'text-font': ['Noto Sans Bold'],
-          'text-size': 11,
-          'text-anchor': 'bottom',
-          'text-offset': [0, -0.65],
-          'icon-allow-overlap': false,
-          'text-allow-overlap': false,
-        },
-        paint: { 'text-color': '#ffffff' },
-      });
-
-      const allListingLayers = [
-        'listings-ss-dots', 'listings-ss-badges',
-        'listings-c24-dots', 'listings-c24-badges',
-        'listings-pp-dots', 'listings-pp-badges',
-        'auctions-dots', 'auctions-badges',
-      ];
-      allListingLayers.forEach((lyr) => {
-        m.on('mouseenter', lyr, () => { m.getCanvas().style.cursor = 'pointer'; });
-        m.on('mouseleave', lyr, () => { m.getCanvas().style.cursor = ''; });
       });
 
       m.on('mouseenter', 'mix-one', () => { m.getCanvas().style.cursor = 'pointer'; });
@@ -1671,6 +1519,164 @@ export default function App() {
         },
       });
 
+      // ── SLUDINĀJUMU UN IZSOĻU PRIEKŠPLĀNA SLĀŅI (VIRS VISIEM ĪPAŠUMIEM UN DARĪJUMIEM) ──
+      // Punkti
+      m.addLayer({
+        id: 'listings-ss-dots',
+        type: 'circle',
+        source: 'listings-pts',
+        minzoom: 13.5,
+        filter: ['in', ['get', 'portal'], ['literal', ['ss.com', 'ss']]],
+        paint: {
+          'circle-radius': ['interpolate', ['linear'], ['zoom'], 13.5, 4.5, 15, 6.0, 17, 8.0],
+          'circle-color': ['match', ['get', 'deal_type'], 'rent', '#1565c0', '#2f8a55'],
+          'circle-stroke-width': 2.0,
+          'circle-stroke-color': '#ffffff',
+          'circle-opacity': 0.95,
+        },
+      });
+
+      m.addLayer({
+        id: 'listings-c24-dots',
+        type: 'circle',
+        source: 'listings-pts',
+        minzoom: 13.5,
+        filter: ['in', ['get', 'portal'], ['literal', ['city24', 'city24.lv']]],
+        paint: {
+          'circle-radius': ['interpolate', ['linear'], ['zoom'], 13.5, 4.5, 15, 6.0, 17, 8.0],
+          'circle-color': ['match', ['get', 'deal_type'], 'rent', '#1565c0', '#2f8a55'],
+          'circle-stroke-width': 2.0,
+          'circle-stroke-color': '#ffffff',
+          'circle-opacity': 0.95,
+        },
+      });
+
+      m.addLayer({
+        id: 'listings-pp-dots',
+        type: 'circle',
+        source: 'listings-pts',
+        minzoom: 13.5,
+        filter: ['in', ['get', 'portal'], ['literal', ['pp.lv', 'pp']]],
+        paint: {
+          'circle-radius': ['interpolate', ['linear'], ['zoom'], 13.5, 4.5, 15, 6.0, 17, 8.0],
+          'circle-color': ['match', ['get', 'deal_type'], 'rent', '#1565c0', '#2f8a55'],
+          'circle-stroke-width': 2.0,
+          'circle-stroke-color': '#ffffff',
+          'circle-opacity': 0.95,
+        },
+      });
+
+      m.addLayer({
+        id: 'auctions-dots',
+        type: 'circle',
+        source: 'auctions-pts',
+        minzoom: 12.5,
+        paint: {
+          'circle-radius': ['interpolate', ['linear'], ['zoom'], 12.5, 4.5, 15, 6.5, 17, 8.5],
+          'circle-color': '#c8860a',
+          'circle-stroke-width': 2.0,
+          'circle-stroke-color': '#ffffff',
+          'circle-opacity': 0.95,
+        },
+      });
+
+      // Cenu plāksnītes (speech bubbles) — VIENMĒR priekšplānā, nepazūd piezoomojot (overlap: true)
+      m.addLayer({
+        id: 'listings-ss-badges',
+        type: 'symbol',
+        source: 'listings-pts',
+        minzoom: 13.5,
+        filter: ['all', ['in', ['get', 'portal'], ['literal', ['ss.com', 'ss']]], ['!=', ['get', 'price_short'], '']],
+        layout: {
+          'icon-image': ['match', ['get', 'deal_type'], 'rent', 'badge-rent', 'badge-sell'],
+          'icon-anchor': 'bottom',
+          'icon-text-fit': 'both',
+          'icon-text-fit-padding': [3, 7, 3, 7],
+          'text-field': ['get', 'price_short'],
+          'text-font': ['Noto Sans Bold'],
+          'text-size': 11,
+          'text-anchor': 'bottom',
+          'text-offset': [0, -1.2],
+          'icon-allow-overlap': true,
+          'icon-ignore-placement': true,
+          'text-allow-overlap': true,
+          'text-ignore-placement': true,
+        },
+        paint: { 'text-color': '#ffffff' },
+      });
+
+      m.addLayer({
+        id: 'listings-c24-badges',
+        type: 'symbol',
+        source: 'listings-pts',
+        minzoom: 13.5,
+        filter: ['all', ['in', ['get', 'portal'], ['literal', ['city24', 'city24.lv']]], ['!=', ['get', 'price_short'], '']],
+        layout: {
+          'icon-image': ['match', ['get', 'deal_type'], 'rent', 'badge-rent', 'badge-sell'],
+          'icon-anchor': 'bottom',
+          'icon-text-fit': 'both',
+          'icon-text-fit-padding': [3, 7, 3, 7],
+          'text-field': ['get', 'price_short'],
+          'text-font': ['Noto Sans Bold'],
+          'text-size': 11,
+          'text-anchor': 'bottom',
+          'text-offset': [0, -1.2],
+          'icon-allow-overlap': true,
+          'icon-ignore-placement': true,
+          'text-allow-overlap': true,
+          'text-ignore-placement': true,
+        },
+        paint: { 'text-color': '#ffffff' },
+      });
+
+      m.addLayer({
+        id: 'listings-pp-badges',
+        type: 'symbol',
+        source: 'listings-pts',
+        minzoom: 13.5,
+        filter: ['all', ['in', ['get', 'portal'], ['literal', ['pp.lv', 'pp']]], ['!=', ['get', 'price_short'], '']],
+        layout: {
+          'icon-image': ['match', ['get', 'deal_type'], 'rent', 'badge-rent', 'badge-sell'],
+          'icon-anchor': 'bottom',
+          'icon-text-fit': 'both',
+          'icon-text-fit-padding': [3, 7, 3, 7],
+          'text-field': ['get', 'price_short'],
+          'text-font': ['Noto Sans Bold'],
+          'text-size': 11,
+          'text-anchor': 'bottom',
+          'text-offset': [0, -1.2],
+          'icon-allow-overlap': true,
+          'icon-ignore-placement': true,
+          'text-allow-overlap': true,
+          'text-ignore-placement': true,
+        },
+        paint: { 'text-color': '#ffffff' },
+      });
+
+      m.addLayer({
+        id: 'auctions-badges',
+        type: 'symbol',
+        source: 'auctions-pts',
+        minzoom: 12.5,
+        filter: ['!=', ['get', 'price_short'], ''],
+        layout: {
+          'icon-image': 'badge-amber',
+          'icon-anchor': 'bottom',
+          'icon-text-fit': 'both',
+          'icon-text-fit-padding': [3, 7, 3, 7],
+          'text-field': ['get', 'price_short'],
+          'text-font': ['Noto Sans Bold'],
+          'text-size': 11,
+          'text-anchor': 'bottom',
+          'text-offset': [0, -1.2],
+          'icon-allow-overlap': true,
+          'icon-ignore-placement': true,
+          'text-allow-overlap': true,
+          'text-ignore-placement': true,
+        },
+        paint: { 'text-color': '#ffffff' },
+      });
+
       // Interaktivitāte kursoram
       const interactiveLayers = [
         'parcels-fill',
@@ -1678,7 +1684,14 @@ export default function App() {
         'darijumi-zv-dots',
         'darijumi-zvb-dots',
         'darijumi-tg-dots',
-        'listings-dots',
+        'listings-ss-dots',
+        'listings-ss-badges',
+        'listings-c24-dots',
+        'listings-c24-badges',
+        'listings-pp-dots',
+        'listings-pp-badges',
+        'auctions-dots',
+        'auctions-badges',
         'energy-dots',
         'pollution-dots',
         'tapis-zone-fill',
@@ -1696,10 +1709,11 @@ export default function App() {
         });
       });
 
-      // Klikšķa apstrāde darījumiem
+      // Klikšķa apstrāde darījumiem (sludinājumi ņem virsroku, ja atrodas tajā pašā punktā)
       const txLayers = ['darijumi-zv-dots', 'darijumi-zvb-dots', 'darijumi-tg-dots'];
       txLayers.forEach((layerId) => {
         m.on('click', layerId, (e) => {
+          if ((e.originalEvent as any)?._markerHandled) return;
           const f = e.features?.[0];
           if (!f) return;
           const p = f.properties || {};
