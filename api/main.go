@@ -584,6 +584,33 @@ func handleTransactions(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, deals)
 }
 
+// normalizeCategoryList maps canonical categories (e.g. "houses", "flats", "land")
+// to the diverse category strings stored across portals (SS.com, City24, PP.lv).
+func normalizeCategoryList(cat string) []string {
+	cat = strings.ToLower(strings.TrimSpace(cat))
+	switch cat {
+	case "houses", "house", "homes-summer-residences", "majas":
+		return []string{"houses", "house", "homes-summer-residences"}
+	case "flats", "apartment", "dzivokli":
+		return []string{"flats", "apartment"}
+	case "land", "plots-and-lands", "plots", "zeme":
+		return []string{"land", "plots-and-lands"}
+	case "commercial", "premises", "offices", "komerc":
+		return []string{"commercial", "premises", "offices"}
+	case "forest", "wood", "mezs":
+		return []string{"wood", "forest"}
+	case "farms", "farms-estates", "lauku-ipasumi":
+		return []string{"farms-estates", "farms"}
+	case "garage", "garages", "garaza":
+		return []string{"garage", "garages"}
+	default:
+		if cat != "" && cat != "all" {
+			return []string{cat}
+		}
+		return nil
+	}
+}
+
 // /api/listings vai /api/listings-geojson?portal=ss.com&bbox=20.9,55.6,28.3,58.1
 func handleListingsGeoJSON(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
@@ -626,10 +653,14 @@ func handleListingsGeoJSON(w http.ResponseWriter, r *http.Request) {
 		argIdx++
 	}
 
-	if category != "" {
-		whereClauses = append(whereClauses, fmt.Sprintf("l.category = $%d", argIdx))
-		args = append(args, category)
-		argIdx++
+	if cats := normalizeCategoryList(category); len(cats) > 0 {
+		placeholders := make([]string, len(cats))
+		for i, c := range cats {
+			placeholders[i] = fmt.Sprintf("$%d", argIdx)
+			args = append(args, c)
+			argIdx++
+		}
+		whereClauses = append(whereClauses, fmt.Sprintf("l.category IN (%s)", strings.Join(placeholders, ", ")))
 	}
 
 	limitStr := r.URL.Query().Get("limit")
@@ -1484,10 +1515,14 @@ func searchListings(w http.ResponseWriter, ctx context.Context, qParams url.Valu
 	if cat == "" {
 		cat = strings.ToLower(qParams.Get("category"))
 	}
-	if cat != "" && cat != "all" {
-		whereClauses = append(whereClauses, fmt.Sprintf("l.category = $%d", argIdx))
-		args = append(args, cat)
-		argIdx++
+	if cats := normalizeCategoryList(cat); len(cats) > 0 {
+		placeholders := make([]string, len(cats))
+		for i, c := range cats {
+			placeholders[i] = fmt.Sprintf("$%d", argIdx)
+			args = append(args, c)
+			argIdx++
+		}
+		whereClauses = append(whereClauses, fmt.Sprintf("l.category IN (%s)", strings.Join(placeholders, ", ")))
 	}
 
 	portal := strings.ToLower(qParams.Get("portal"))

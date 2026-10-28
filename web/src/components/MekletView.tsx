@@ -423,8 +423,11 @@ export const MekletView: React.FC<MekletViewProps> = ({
                 <option value="all">Visas kategorijas</option>
                 <option value="flats">Dzīvokļi</option>
                 <option value="houses">Mājas</option>
-                <option value="plots-and-lands">Zeme</option>
+                <option value="land">Zeme</option>
                 <option value="commercial">Komerctelpas</option>
+                <option value="farms">Lauku viensētas</option>
+                <option value="forest">Mežs</option>
+                <option value="garage">Garāžas</option>
               </select>
             </div>
           )}
