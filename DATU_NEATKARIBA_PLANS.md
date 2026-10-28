@@ -28,30 +28,24 @@
 ## 2. Veicamo Darbu Saraksts (Roadmap)
 
 ### 📌 1. Uzdevums: Daudzu Avotu Sludinājumu Dzinējs & Dinamiskie Signāli (Multi-Portal Scraper Engine)
-- [ ] **1.1. Multi-resursu datubāzes shēma:**
-  - Izveidot tabulu `public.listings` ar atbalstu vairākiem avotiem (`source`: `ss.com`, `city24.lv`, `pp.lv`, `izsoles.ta.gov.lv`), unikālu atslēgu `UNIQUE(source, external_id)`, cenu dinamiku (`first_price`, `last_price`), dienām tirgū (`days_on_market`), telpisko punktu `geom` un sasaisti ar kadastru `cadastre_code`.
-  - Izveidot tabulu `public.listing_price_changes` vēsturisko cenu lēcienu un atlaižu reģistrēšanai (`listing_id`, `change_date`, `old_price`, `new_price`, `delta_amount`, `delta_percent`).
-- [ ] **1.2. Vēsturiskā sākuma datu ielāde (Initial Historical Seed):**
-  - Vienreizējs skripts `importer/seed_listings.py`, kas ielādē pašreizējos aktīvos sludinājumus kopā ar to vēsturisko cenu izmaiņu hronoloģiju un bildēm, lai uzreiz būtu pieejami dati par dienām tirgū un cenu kritumiem.
+- [x] **1.1. Multi-resursu datubāzes shēma:**
+  - Izveidota tabula `public.listings` ar atbalstu vairākiem avotiem (`source`: `ss.com`, `city24.lv`, `pp.lv`, `izsoles.ta.gov.lv`), unikālu atslēgu `UNIQUE(source, external_id)`, cenu dinamiku (`first_price`, `last_price`), dienām tirgū (`days_on_market`), telpisko punktu `geom` un sasaisti ar kadastru `cadastre_code`.
+  - Izveidota tabula `public.listing_price_changes` vēsturisko cenu lēcienu un atlaižu reģistrēšanai (`listing_id`, `change_date`, `old_price`, `new_price`, `delta_amount`, `delta_percent`).
+- [x] **1.2. Vēsturiskā sākuma datu ielāde (Initial Historical Seed):**
+  - Ieviestais skripts `importer/seed_listings.py` sekmīgi ielādējis 2 367+ aktīvos sludinājumus kopā ar to vēsturisko cenu izmaiņu hronoloģiju, bildēm, dienām tirgū un sasaisti ar kadastra vienībām.
 - [ ] **1.3. Modulārs skreiperu karkass (Multi-Source Crawler Framework):**
   - `importer/scrapers/base.py` – unificēts modelis (`ListingItem`) un abstrakts bāzes skreiperis.
   - `importer/scrapers/ss_com.py` – `ss.com` periodiskais skreiperis (dzīvokļi, mājas, zeme, telpas, īre).
   - `importer/scrapers/city24.py` & `pp_lv.py` – papildu Latvijas nekustamā īpašuma portālu moduļi.
   - `importer/scrapers/izsoles.py` – valsts tiesu un maksātnespējas izsoļu modulis (`izsoles.ta.gov.lv`).
   - `importer/scrapers/pipeline.py` – automātiska adrešu ģeokodēšana ar `addresses`, kadastra zemes vienības piesaiste ar `parcels`, cenu izmaiņu piefiksēšana un neaktīvo sludinājumu atzīmēšana.
-- [ ] **1.4. Go API gala punkti (Dinamiskie JSON dati):**
-  - `/api/listings` vai `/api/listings-geojson` – atgriež filtrētus sludinājumus (pēc `source`, kategorijas, cenas, koordinātu apgabala `bbox`).
+- [x] **1.4. Go API gala punkti (Dinamiskie JSON dati):**
+  - `/api/listings` – atgriež filtrētus sludinājumus GeoJSON formātā (pēc `portal`, `bbox`, `limit`).
   - `/api/listing-history` – atgriež sludinājuma cenu izmaiņu vēsturi, dienas tirgū un bilžu galeriju JSON formātā.
-  - `/api/popup-signals` – aprēķina un atgriež nekustamā īpašuma signālus tieši no mūsu PostGIS:
-    - `tx`: darījumi šajā zemes vienībā no `transactions` (skaits, mediāna, pēdējie darījumi).
-    - `tx_near`: darījumi 500 m rādiusā.
-    - `enc`: apgrūtinājumi un servitūti no `way_restrictions`.
-    - `zone`: funkcionālais zonējums no `tapis_zonejums`.
-    - `riski`: dabas liegumi (`mv_protected_areas`), plūdi (`flood_zone`), grausti (`degrading_buildings`).
-    - `sources`: pārbaudīto valsts reģistru skaits (11 avoti).
-- [ ] **1.5. Frontend interaktīvā kartīte un vēstures logs:**
-  - Moderns sludinājuma uznirstošais logs (popup): fotogrāfija, cena ar €/m², specifikācija (istabas, m²), cenu samazinājuma bloks, poga "Sludinājuma vēsture ➔", poga "Atvērt {source} ↗" un īpašuma atskaites signālu kopsavilkums.
-  - Vēstures modālais logs ar cenu izmaiņu grafiku/laika līniju.
+  - `/api/popup-signals` – aprēķina un atgriež nekustamā īpašuma signālus tieši no mūsu PostGIS (darījumi, mediāna, apgrūtinājumi, zonējums, vides riski).
+- [x] **1.5. Frontend interaktīvā kartīte un vēstures logs:**
+  - Moderns sludinājuma uznirstošais logs (popup): fotogrāfija, cena ar €/m², specifikācija (istabas, m², stāvs), cenu samazinājuma bloks ar atlaides %, dienas tirgū, poga "Vēsture ➔", poga "Atvērt {source} ↗" un īpašuma signālu kopsavilkums tieši no PostGIS ar saiti uz pilno kadastra atskaiti.
+  - Vēstures modālais logs ar cenu izmaiņu hronoloģiju, cenu pieauguma/krituma atzīmēm, statistikas kartītēm un bilžu galeriju.
 
 ---
 
