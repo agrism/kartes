@@ -387,6 +387,14 @@ func handleListingsGeoJSON(w http.ResponseWriter, r *http.Request) {
 		argIdx++
 	}
 
+	limitStr := r.URL.Query().Get("limit")
+	limit := 20000
+	if limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 && l <= 30000 {
+			limit = l
+		}
+	}
+
 	query := fmt.Sprintf(`
 		SELECT 
 			l.id, l.source, l.external_id, l.deal_type, l.category, 
@@ -400,8 +408,8 @@ func handleListingsGeoJSON(w http.ResponseWriter, r *http.Request) {
 		FROM public.listings l
 		WHERE %s
 		ORDER BY l.id DESC
-		LIMIT 20000;
-	`, strings.Join(whereClauses, " AND "))
+		LIMIT %d;
+	`, strings.Join(whereClauses, " AND "), limit)
 
 	rows, err := dbPool.Query(ctx, query, args...)
 	if err != nil {
