@@ -12,6 +12,7 @@ import json
 import zipfile
 import argparse
 import unicodedata
+import gc
 import requests
 from tqdm import tqdm
 import psycopg
@@ -112,8 +113,11 @@ def process_cadastre_zip(conn, zip_path: str, region_name: str, limit: int = 0) 
 
             total_parcels = 0
             with cur.copy("COPY tmp_parcels (code, area_m2, wkb_hex) FROM STDIN") as copy:
-                for shp_name in tqdm(parcel_shps, desc=f"{region_name} - Zemes vienības"):
+                for idx, shp_name in enumerate(tqdm(parcel_shps, desc=f"{region_name} - Zemes vienības")):
                     base = shp_name[:-4]
+                    shp_io = None
+                    shx_io = None
+                    dbf_io = None
                     try:
                         shp_io = io.BytesIO(zf.read(base + ".shp"))
                         shx_io = io.BytesIO(zf.read(base + ".shx"))
@@ -138,10 +142,19 @@ def process_cadastre_zip(conn, zip_path: str, region_name: str, limit: int = 0) 
 
                             if limit > 0 and total_parcels >= limit:
                                 break
-                        if limit > 0 and total_parcels >= limit:
-                            break
+                        del sf
                     except Exception:
-                        continue
+                        pass
+                    finally:
+                        if shp_io: shp_io.close()
+                        if shx_io: shx_io.close()
+                        if dbf_io: dbf_io.close()
+                        del shp_io, shx_io, dbf_io
+                    if idx % 20 == 0:
+                        gc.collect()
+
+            del parcel_shps
+            gc.collect()
 
             print(f"🚀 [{region_name}] Ievieto {total_parcels} zemes vienības PostGIS (EPSG:3059 -> 3857)...")
             cur.execute("""
@@ -171,8 +184,11 @@ def process_cadastre_zip(conn, zip_path: str, region_name: str, limit: int = 0) 
 
             total_buildings = 0
             with cur.copy("COPY tmp_buildings (code, parcel_code, wkb_hex) FROM STDIN") as copy:
-                for shp_name in tqdm(building_shps, desc=f"{region_name} - Būves"):
+                for idx, shp_name in enumerate(tqdm(building_shps, desc=f"{region_name} - Būves")):
                     base = shp_name[:-4]
+                    shp_io = None
+                    shx_io = None
+                    dbf_io = None
                     try:
                         shp_io = io.BytesIO(zf.read(base + ".shp"))
                         shx_io = io.BytesIO(zf.read(base + ".shx"))
@@ -197,10 +213,19 @@ def process_cadastre_zip(conn, zip_path: str, region_name: str, limit: int = 0) 
 
                             if limit > 0 and total_buildings >= limit:
                                 break
-                        if limit > 0 and total_buildings >= limit:
-                            break
+                        del sf
                     except Exception:
-                        continue
+                        pass
+                    finally:
+                        if shp_io: shp_io.close()
+                        if shx_io: shx_io.close()
+                        if dbf_io: dbf_io.close()
+                        del shp_io, shx_io, dbf_io
+                    if idx % 20 == 0:
+                        gc.collect()
+
+            del building_shps
+            gc.collect()
 
             print(f"🚀 [{region_name}] Ievieto {total_buildings} būves PostGIS (EPSG:3059 -> 3857)...")
             cur.execute("""
