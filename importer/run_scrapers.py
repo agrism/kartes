@@ -1,21 +1,15 @@
 #!/usr/bin/env python3
 """
-importer/run_scrapers.py - Vienots sludinājumu skreiperu palaidējs
-Palaidējs atbalsta ss.com, city24.lv un izsoles.ta.gov.lv skreiperus,
-automātiski apstrādā datus caur IngestionPipeline un sinhronizē ar PostGIS.
-
-Piemēri:
-  python run_scrapers.py --source city24 --limit 100
-  python run_scrapers.py --source ss --limit 50 --mode today
-  python run_scrapers.py --source izsoles --limit 30
-  python run_scrapers.py --source all --mode today
-  python run_scrapers.py --source all --daemon --interval 30
+importer/run_scrapers.py - Vienots sludinājumu skreiperu palaidējs ar veselības un atskaišu dzinēju
+Automātiski reģistrē katra cikla statistiku tabulā `public.scraper_runs`,
+fiksē kļūdas, apstrādātos sludinājumus, jaunos objektus un cenu kritumus.
 """
 
 import sys
 import time
 import argparse
 from datetime import datetime
+from typing import Dict, Any, List
 from scrapers.base import BaseScraper
 from scrapers.ss_com import SSComScraper
 from scrapers.city24 import City24Scraper
@@ -31,10 +25,12 @@ AVAILABLE_SCRAPERS = {
     "izsoles.ta.gov.lv": IzsolesScraper,
 }
 
-def run_scraper(scraper_name: str, scraper_cls, args, pipeline: IngestionPipeline):
+def run_scraper(scraper_name: str, scraper_cls, args, pipeline: IngestionPipeline) -> Dict[str, Any]:
     print(f"\n=======================================================")
     print(f"🚀 Uzsāk skreiperi: {scraper_name.upper()} (Režīms: {args.mode}, Limits: {args.limit or 'Nav'})")
     print(f"=======================================================")
+
+    run_id = pipeline.start_run(scraper_name, args.mode)
 
     kwargs = {}
     if scraper_cls == SSComScraper:
@@ -47,29 +43,107 @@ def run_scraper(scraper_name: str, scraper_cls, args, pipeline: IngestionPipelin
     scraper: BaseScraper = scraper_cls(**kwargs)
     processed = 0
     saved = 0
+    new_items = 0
+    updated_items = 0
+    price_changes = 0
     errors = 0
+    last_error = None
     start_time = time.time()
+
+    status = "success"
 
     try:
         for item in scraper.scrape(limit=args.limit):
             processed += 1
             try:
-                ok = pipeline.process_item(item)
+                ok, is_new, p_changed = pipeline.process_item(item)
                 if ok:
                     saved += 1
-                if processed % 10 == 0 or processed == 1:
-                    print(f"   [{scraper_name}] Apstrādāti {processed} | Saglabāti {saved} | {item.title[:45] if item.title else item.external_id} ({item.price} €)")
+                    if is_new:
+                        new_items += 1
+                    else:
+                        updated_items += 1
+                    if p_changed:
+                        price_changes += 1
+
+                if processed % 15 == 0 or processed == 1:
+                    print(f"   [{scraper_name}] Apstrādāti: {processed} | Jauni: {new_items} | Atjaunoti: {updated_items} | Cenu izm.: {price_changes} | {item.title[:40] if item.title else item.external_id} ({item.price} €)")
             except Exception as e:
                 errors += 1
-                print(f"   ❌ Kļūda saglabājot {item.external_id}: {e}")
+                last_error = str(e)
+                print(f"   ❌ Kļūda saglabājot [{scraper_name}:{item.external_id}]: {e}")
+
+        if errors > 0 and saved == 0:
+            status = "failed"
+        elif errors > 0:
+            status = "warning"
 
     except KeyboardInterrupt:
         print("\n⚠️ Lietotājs pārtrauca procesu.")
+        status = "cancelled"
+        last_error = "User cancelled"
     except Exception as e:
         print(f"\n❌ Negaidīta kļūda izpildot {scraper_name}: {e}")
+        status = "failed"
+        last_error = str(e)
 
-    elapsed = round(time.time() - start_time, 1)
-    print(f"✅ {scraper_name.upper()} pabeigts {elapsed}s: Apstrādāti {processed}, Veiksmīgi saglabāti {saved}, Kļūdas {errors}.\n")
+    elapsed = round(time.time() - start_time, 2)
+
+    # Reģistrē noslēgumu datubāzē
+    pipeline.finish_run(
+        run_id=run_id,
+        status=status,
+        items_scraped=processed,
+        items_saved=saved,
+        items_new=new_items,
+        items_updated=updated_items,
+        price_changes=price_changes,
+        errors_count=errors,
+        error_message=last_error,
+        details={"mode": args.mode, "limit": args.limit},
+    )
+
+    print(f"🏁 {scraper_name.upper()} pabeigts {elapsed}s:")
+    print(f"   • Statuss:        {status.upper()}")
+    print(f"   • Nolasīti:       {processed}")
+    print(f"   • Jauni:          {new_items}")
+    print(f"   • Atjaunoti:      {updated_items}")
+    print(f"   • Cenu izmaiņas:  {price_changes}")
+    print(f"   • Kļūdas:         {errors}")
+
+    return {
+        "source": scraper_name,
+        "status": status,
+        "processed": processed,
+        "new": new_items,
+        "updated": updated_items,
+        "price_changes": price_changes,
+        "errors": errors,
+        "elapsed_sec": elapsed,
+        "error_message": last_error,
+    }
+
+def print_summary_report(results: List[Dict[str, Any]]):
+    print("\n" + "=" * 70)
+    print("📊 KOPĒJĀ SLUDINĀJUMU SINHRONIZĀCIJAS ATSKAITE")
+    print("=" * 70)
+    print(f"{'AVOTS':<15} | {'STATUSS':<10} | {'APSTRĀDĀTI':<10} | {'JAUNI':<7} | {'CENU IZM.':<9} | {'LAIKS':<6}")
+    print("-" * 70)
+    total_proc = 0
+    total_new = 0
+    total_price = 0
+    total_err = 0
+
+    for r in results:
+        total_proc += r["processed"]
+        total_new += r["new"]
+        total_price += r["price_changes"]
+        total_err += r["errors"]
+        print(f"{r['source']:<15} | {r['status']:<10} | {r['processed']:<10} | {r['new']:<7} | {r['price_changes']:<9} | {r['elapsed_sec']:<5}s")
+
+    print("-" * 70)
+    print(f"{'KOPĀ':<15} | {'—':<10} | {total_proc:<10} | {total_new:<7} | {total_price:<9} | Kļūdas: {total_err}")
+    print("=" * 70 + "\n")
 
 def main():
     parser = argparse.ArgumentParser(description="Latvijas nekustamā īpašuma sludinājumu skreiperis un integrācija")
@@ -101,9 +175,13 @@ def main():
     try:
         while True:
             cycle_start = time.time()
+            results = []
             for src in selected_sources:
                 cls = AVAILABLE_SCRAPERS[src]
-                run_scraper(src, cls, args, pipeline)
+                res = run_scraper(src, cls, args, pipeline)
+                results.append(res)
+
+            print_summary_report(results)
 
             if not args.daemon:
                 break

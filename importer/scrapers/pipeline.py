@@ -52,8 +52,10 @@ class IngestionPipeline:
             if row:
                 # Eksistējošs sludinājums - pārbauda cenu izmaiņas
                 listing_id, old_price, first_price, days_on_market, first_seen_at = row
+                price_changed = False
                 
                 if item.price is not None and old_price is not None and abs(float(item.price) - float(old_price)) > 0.01:
+                    price_changed = True
                     delta_amt = float(item.price) - float(old_price)
                     delta_pct = round((delta_amt / float(old_price)) * 100, 2) if float(old_price) > 0 else 0
                     
@@ -96,6 +98,7 @@ class IngestionPipeline:
                     days,
                     listing_id
                 ))
+                return True, False, price_changed  # success, is_new, price_changed
             else:
                 # Jauns sludinājums
                 cur.execute("""
@@ -142,8 +145,64 @@ class IngestionPipeline:
                     item.lng, item.lat,
                     item.published_at or datetime.now(),
                 ))
+                return True, True, False  # success, is_new, price_changed
 
-        return True
+    def start_run(self, source: str, mode: str = "today") -> int:
+        """
+        Reģistrē skreipera cikla sākumu un atgriež run_id
+        """
+        with self.conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO scraper_runs (source, mode, status, started_at)
+                VALUES (%s, %s, 'running', CURRENT_TIMESTAMP)
+                RETURNING id;
+            """, (source, mode))
+            row = cur.fetchone()
+            return row[0]
+
+    def finish_run(
+        self,
+        run_id: int,
+        status: str = "success",
+        items_scraped: int = 0,
+        items_saved: int = 0,
+        items_new: int = 0,
+        items_updated: int = 0,
+        price_changes: int = 0,
+        errors_count: int = 0,
+        error_message: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None,
+    ):
+        """
+        Reģistrē skreipera cikla noslēgumu un saglabā statistiku
+        """
+        with self.conn.cursor() as cur:
+            cur.execute("""
+                UPDATE scraper_runs SET
+                    status = %s,
+                    finished_at = CURRENT_TIMESTAMP,
+                    duration_sec = ROUND(EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - started_at))::numeric, 2),
+                    items_scraped = %s,
+                    items_saved = %s,
+                    items_new = %s,
+                    items_updated = %s,
+                    price_changes = %s,
+                    errors_count = %s,
+                    error_message = %s,
+                    details = %s
+                WHERE id = %s;
+            """, (
+                status,
+                items_scraped,
+                items_saved,
+                items_new,
+                items_updated,
+                price_changes,
+                errors_count,
+                error_message,
+                json.dumps(details or {}),
+                run_id,
+            ))
 
     def _geocode(self, cur, item: ListingItem) -> Optional[Tuple[float, float]]:
         """

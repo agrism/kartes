@@ -59,3 +59,27 @@ CREATE TABLE IF NOT EXISTS public.listing_price_changes (
 
 CREATE INDEX IF NOT EXISTS idx_price_changes_listing ON public.listing_price_changes (listing_id);
 CREATE INDEX IF NOT EXISTS idx_price_changes_date ON public.listing_price_changes (change_date);
+
+-- Skreiperu izpildes un veselības uzraudzības žurnāls
+CREATE TABLE IF NOT EXISTS public.scraper_runs (
+    id BIGSERIAL PRIMARY KEY,
+    source VARCHAR(50) NOT NULL,                        -- 'all', 'ss.com', 'city24', 'izsoles.ta.gov.lv'
+    mode VARCHAR(20) DEFAULT 'today',                   -- 'today', 'full'
+    status VARCHAR(20) NOT NULL DEFAULT 'running',      -- 'running', 'success', 'warning', 'failed'
+    started_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    finished_at TIMESTAMP WITH TIME ZONE,
+    duration_sec NUMERIC(10, 2),
+    items_scraped INT DEFAULT 0,
+    items_saved INT DEFAULT 0,
+    items_new INT DEFAULT 0,
+    items_updated INT DEFAULT 0,
+    price_changes INT DEFAULT 0,
+    errors_count INT DEFAULT 0,
+    error_message TEXT,
+    details JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_scraper_runs_started ON public.scraper_runs (started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_scraper_runs_source ON public.scraper_runs (source);
+CREATE INDEX IF NOT EXISTS idx_scraper_runs_status ON public.scraper_runs (status);

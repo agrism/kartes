@@ -69,6 +69,8 @@ func main() {
 	mux.HandleFunc("/api/popup-signals", handlePopupSignals)
 	mux.HandleFunc("/api/auctions", handleAuctions)
 	mux.HandleFunc("/api/auctions-geojson", handleAuctions)
+	mux.HandleFunc("/api/scraper-status", handleScraperStatus)
+	mux.HandleFunc("/api/scraper-runs", handleScraperStatus)
 
 	handler := enableCORS(mux)
 
@@ -1182,5 +1184,101 @@ func handleAuctions(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(body)
+}
+
+// /api/scraper-status - Atgriež skreiperu veselības statusu un pēdējo izpildes žurnālu
+func handleScraperStatus(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	if dbPool == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]any{
+			"status": "error",
+			"error":  "Datubāze nav pieejama",
+		})
+		return
+	}
+
+	type ScraperRunRow struct {
+		ID           int64      `json:"id"`
+		Source       string     `json:"source"`
+		Mode         string     `json:"mode"`
+		Status       string     `json:"status"`
+		StartedAt    time.Time  `json:"started_at"`
+		FinishedAt   *time.Time `json:"finished_at,omitempty"`
+		DurationSec  *float64   `json:"duration_sec,omitempty"`
+		ItemsScraped int        `json:"items_scraped"`
+		ItemsSaved   int        `json:"items_saved"`
+		ItemsNew     int        `json:"items_new"`
+		ItemsUpdated int        `json:"items_updated"`
+		PriceChanges int        `json:"price_changes"`
+		ErrorsCount  int        `json:"errors_count"`
+		ErrorMessage *string    `json:"error_message,omitempty"`
+		MinutesAgo   int        `json:"minutes_ago"`
+	}
+
+	runs := make([]ScraperRunRow, 0)
+	rows, err := dbPool.Query(ctx, `
+		SELECT id, source, mode, status, started_at, finished_at, duration_sec,
+		       items_scraped, items_saved, items_new, items_updated, price_changes,
+		       errors_count, error_message,
+		       ROUND(EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - started_at))/60)::int as minutes_ago
+		FROM public.scraper_runs
+		ORDER BY started_at DESC
+		LIMIT 20;
+	`)
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var row ScraperRunRow
+			if err := rows.Scan(
+				&row.ID, &row.Source, &row.Mode, &row.Status, &row.StartedAt, &row.FinishedAt, &row.DurationSec,
+				&row.ItemsScraped, &row.ItemsSaved, &row.ItemsNew, &row.ItemsUpdated, &row.PriceChanges,
+				&row.ErrorsCount, &row.ErrorMessage, &row.MinutesAgo,
+			); err == nil {
+				runs = append(runs, row)
+			}
+		}
+	}
+
+	// Kopējie skaitļi
+	var totalListings, activeListings, totalPriceChanges int64
+	_ = dbPool.QueryRow(ctx, "SELECT count(*) FROM public.listings").Scan(&totalListings)
+	_ = dbPool.QueryRow(ctx, "SELECT count(*) FROM public.listings WHERE is_active = true").Scan(&activeListings)
+	_ = dbPool.QueryRow(ctx, "SELECT count(*) FROM public.listing_price_changes").Scan(&totalPriceChanges)
+
+	isHealthy := true
+	healthMsg := "Skreiperu dzinējs darbojas normāli"
+
+	if len(runs) == 0 {
+		isHealthy = false
+		healthMsg = "Nav fiksēts neviens skreipera cikls"
+	} else {
+		lastRun := runs[0]
+		if lastRun.Status == "failed" {
+			isHealthy = false
+			healthMsg = "Pēdējais skreipera cikls beidzās ar kļūdu"
+		} else if lastRun.MinutesAgo > 180 { // ilgāk par 3 stundām
+			isHealthy = false
+			healthMsg = fmt.Sprintf("Brīdinājums: Pēdējais skreipera cikls bija pirms %d minūtēm (> 3h)", lastRun.MinutesAgo)
+		}
+	}
+
+	var lastRun any = nil
+	if len(runs) > 0 {
+		lastRun = runs[0]
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"is_healthy": isHealthy,
+		"status":     healthMsg,
+		"last_run":   lastRun,
+		"totals": map[string]any{
+			"total_listings":      totalListings,
+			"active_listings":     activeListings,
+			"total_price_changes": totalPriceChanges,
+		},
+		"runs": runs,
+	})
 }
 
