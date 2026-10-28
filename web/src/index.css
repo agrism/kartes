@@ -481,7 +481,7 @@ html, body, #root {
   overflow-y: auto;
   flex: 1;
   min-height: 0;
-  padding: 8px 12px 14px;
+  padding: 6px 10px 14px;
   scrollbar-gutter: stable;
 }
 
@@ -494,11 +494,38 @@ html, body, #root {
   border-radius: 2px;
 }
 
+.lc-section-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 8px 6px;
+  font-size: 11.5px;
+  color: var(--lc-label);
+  user-select: none;
+}
+
+.lc-section-label b {
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: #8A7F72;
+}
+
+.lc-cats-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
 .lc-cat {
   border-radius: 14px;
+  background: transparent;
+  transition: background 0.15s ease;
+}
+
+.lc-cat.open {
   background: var(--lc-soft);
-  padding: 5px;
-  margin-bottom: 6px;
+  padding-bottom: 4px;
 }
 
 .lc-cat-hdr {
@@ -506,34 +533,113 @@ html, body, #root {
   align-items: center;
   gap: 10px;
   width: 100%;
-  padding: 6px 8px;
+  min-height: 42px;
+  border: 0;
+  background: transparent;
+  padding: 5px 8px;
+  border-radius: 14px;
+  text-align: left;
+  cursor: pointer;
+  user-select: none;
   font-family: inherit;
+  color: inherit;
+  transition: background 0.15s ease;
+}
+
+.lc-cat-hdr:hover {
+  background: var(--lc-soft);
+}
+
+.lc-cat.open .lc-cat-hdr:hover {
+  background: transparent;
 }
 
 .lc-tile {
-  width: 26px;
-  height: 26px;
-  border-radius: 8px;
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
   display: grid;
   place-items: center;
   font-size: 14px;
   flex-shrink: 0;
 }
 
-.lc-layers {
+.lc-tile svg {
+  width: 17px;
+  height: 17px;
+}
+
+.lc-cat-txt {
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 2px;
-  margin-top: 2px;
+}
+
+.lc-cat-name {
+  font-size: 14.5px;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: 0;
+  color: var(--lc-ink);
+}
+
+.lc-pill {
+  width: 38px;
+  height: 22px;
+  padding: 0 4px;
+  border-radius: 11px;
+  background: var(--lc-chip);
+  color: var(--lc-muted);
+  font-size: 12px;
+  font-weight: 700;
+  display: grid;
+  place-items: center;
+  flex: none;
+  transition: all 0.15s ease;
+}
+
+.lc-pill.active {
+  background: #eaf4ee;
+  color: #2f8a55;
+}
+
+.lc-cat-chev {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  color: var(--lc-label);
+  flex: none;
+}
+
+.lc-cat-chev svg {
+  transition: transform 0.2s cubic-bezier(0.2, 0, 0, 1);
+}
+
+.lc-cat.open .lc-cat-chev svg {
+  transform: rotate(180deg);
+}
+
+.lc-layers {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 0 6px 6px;
+}
+
+.lc-cat:not(.open) .lc-layers {
+  display: none;
 }
 
 .lc-row {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 5px 6px 5px 10px;
+  padding: 5px 6px 5px 12px;
   cursor: pointer;
-  border-radius: 8px;
+  border-radius: 10px;
   background: #ffffff;
   transition: background 0.15s;
   user-select: none;
@@ -551,7 +657,7 @@ html, body, #root {
 }
 
 .lc-row-name {
-  font-size: 13px;
+  font-size: 13.5px;
   font-weight: 500;
   color: var(--lc-ink);
   flex: 1;

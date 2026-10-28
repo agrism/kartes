@@ -112,6 +112,28 @@ export default function App() {
     (showTransports ? 1 : 0) +
     (isSatellite ? 1 : 0);
 
+  const kadastrsActive = (showParcels ? 1 : 0) + (showBuildings ? 1 : 0);
+  const sludinajumiActive = showListings ? 1 : 0;
+  const darijumiActive = showTransactions ? 1 : 0;
+  const riskiActive = (showFloods ? 1 : 0) + (showPollution ? 1 : 0) + (showDegrading ? 1 : 0);
+  const planojumsActive = (showZoning ? 1 : 0) + (showConstruction ? 1 : 0);
+  const dabaActive = (showForests ? 1 : 0) + (showServituti ? 1 : 0) + (showProtected ? 1 : 0) + (showNature ? 1 : 0);
+  const apkartneActive = (showSchools ? 1 : 0) + (showTransports ? 1 : 0);
+  const ekaActive = (showEnergy ? 1 : 0) + (isSatellite ? 1 : 0);
+
+  const [openCats, setOpenCats] = useState<Set<string>>(() => new Set(['darijumi']));
+  const toggleCat = (id: string) => {
+    setOpenCats((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
   const clearAllLayers = () => {
     setShowParcels(false);
     setShowBuildings(false);
@@ -1559,7 +1581,13 @@ export default function App() {
                 </div>
                 <div id="lc-exp-text">
                   <div id="lc-exp-title">Slāņi</div>
-                  <div id="lc-exp-status">{activeLayersCount} no {totalLayersCount} aktīvi</div>
+                  <div id="lc-exp-status">
+                    {activeLayersCount === 0
+                      ? 'Nav izvēlēts neviens slānis'
+                      : activeLayersCount === 1
+                      ? 'Izvēlēts 1 slānis'
+                      : `Izvēlēti ${activeLayersCount} slāņi`}
+                  </div>
                 </div>
                 {activeLayersCount > 0 && (
                   <button id="lc-clear-btn" type="button" onClick={clearAllLayers}>
@@ -1567,7 +1595,7 @@ export default function App() {
                   </button>
                 )}
                 <button id="lc-collapse-btn" type="button" onClick={() => setIsLayersOpen(false)} title="Sakļaut slāņus">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6E6458" strokeWidth="2">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6E6458" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                     <polyline points="18 15 12 9 6 15" />
                   </svg>
                 </button>
@@ -1576,211 +1604,370 @@ export default function App() {
 
               {/* Slāņu kategorijas */}
               <div id="lc-cats">
-                {/* 1. KADASTRS UN ĒKAS */}
-                <div className="lc-cat open">
-                  <div className="lc-cat-hdr">
-                    <div className="lc-tile" style={{ background: '#eaf4ee', color: '#1b6b3a' }}>🏛️</div>
-                    <span style={{ fontWeight: 700, fontSize: 13, flex: 1 }}>Kadastrs un ēkas</span>
-                  </div>
-                  <div className="lc-layers">
-                    <div className={`lc-row ${showParcels ? 'on' : ''}`} onClick={() => setShowParcels(!showParcels)}>
-                      <div className="lc-swatch" style={{ background: '#1b6b3a' }} />
-                      <span className="lc-row-name">Zemes vienības (robežas)</span>
-                      {currentZoom < 11.5 && <span className="lc-row-hint">pietuviniet</span>}
-                      <button className={`lc-tog ${showParcels ? 'on' : ''}`} type="button" tabIndex={-1}>
-                        <div className="lc-tog-k" />
-                      </button>
-                    </div>
-                    <div className={`lc-row ${showBuildings ? 'on' : ''}`} onClick={() => setShowBuildings(!showBuildings)}>
-                      <div className="lc-swatch" style={{ background: '#334155' }} />
-                      <span className="lc-row-name">Ēkas un būves</span>
-                      {currentZoom < 12.5 && <span className="lc-row-hint">pietuviniet</span>}
-                      <button className={`lc-tog ${showBuildings ? 'on' : ''}`} type="button" tabIndex={-1}>
-                        <div className="lc-tog-k" />
-                      </button>
-                    </div>
-                  </div>
+                <div className="lc-section-label">
+                  <b>Kategorijas</b>
+                  <span>{totalLayersCount} slāņi</span>
                 </div>
 
-                {/* 2. SLUDINĀJUMI UN DARĪJUMI */}
-                <div className="lc-cat open" style={{ marginTop: 8 }}>
-                  <div className="lc-cat-hdr">
-                    <div className="lc-tile" style={{ background: '#eaf4ee', color: '#2f8a55' }}>🏷️</div>
-                    <span style={{ fontWeight: 700, fontSize: 13, flex: 1 }}>Sludinājumi un darījumi</span>
-                  </div>
-                  <div className="lc-layers">
-                    <div className={`lc-row ${showListings ? 'on' : ''}`} onClick={() => setShowListings(!showListings)}>
-                      <div className="lc-swatch" style={{ background: '#2f8a55' }} />
-                      <span className="lc-row-name">ss.com sludinājumi</span>
-                      <button className={`lc-tog ${showListings ? 'on' : ''}`} type="button" tabIndex={-1}>
-                        <div className="lc-tog-k" />
-                      </button>
+                <div className="lc-cats-list">
+                  {/* 1. KADASTRS UN ĒKAS */}
+                  <div className={`lc-cat ${openCats.has('kadastrs') ? 'open' : ''}`}>
+                    <button
+                      type="button"
+                      className="lc-cat-hdr"
+                      aria-expanded={openCats.has('kadastrs')}
+                      onClick={() => toggleCat('kadastrs')}
+                    >
+                      <div className="lc-tile" style={{ background: '#eaf4ee', color: '#1b6b3a' }}>
+                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                        </svg>
+                      </div>
+                      <div className="lc-cat-txt">
+                        <span className="lc-cat-name">Kadastrs un ēkas</span>
+                      </div>
+                      <span className={`lc-pill ${kadastrsActive > 0 ? 'active' : ''}`}>
+                        {kadastrsActive > 0 ? `${kadastrsActive}/2` : '2'}
+                      </span>
+                      <span className="lc-cat-chev">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="m6 9 6 6 6-6" />
+                        </svg>
+                      </span>
+                    </button>
+                    <div className="lc-layers">
+                      <div className={`lc-row ${showParcels ? 'on' : ''}`} onClick={(e) => { e.stopPropagation(); setShowParcels(!showParcels); }}>
+                        <div className="lc-swatch" style={{ background: '#1b6b3a' }} />
+                        <span className="lc-row-name">Zemes vienības (robežas)</span>
+                        {currentZoom < 11.5 && <span className="lc-row-hint">pietuviniet</span>}
+                        <button className={`lc-tog ${showParcels ? 'on' : ''}`} type="button" tabIndex={-1}>
+                          <div className="lc-tog-k" />
+                        </button>
+                      </div>
+                      <div className={`lc-row ${showBuildings ? 'on' : ''}`} onClick={(e) => { e.stopPropagation(); setShowBuildings(!showBuildings); }}>
+                        <div className="lc-swatch" style={{ background: '#334155' }} />
+                        <span className="lc-row-name">Ēkas un būves</span>
+                        {currentZoom < 12.5 && <span className="lc-row-hint">pietuviniet</span>}
+                        <button className={`lc-tog ${showBuildings ? 'on' : ''}`} type="button" tabIndex={-1}>
+                          <div className="lc-tog-k" />
+                        </button>
+                      </div>
                     </div>
-                    <div className={`lc-row ${showTransactions ? 'on' : ''}`} onClick={() => setShowTransactions(!showTransactions)}>
-                      <div className="lc-swatch" style={{ background: '#7b1fa2' }} />
-                      <span className="lc-row-name">VZD darījumu vēsture</span>
-                      <button className={`lc-tog ${showTransactions ? 'on' : ''}`} type="button" tabIndex={-1}>
-                        <div className="lc-tog-k" />
-                      </button>
-                    </div>
                   </div>
-                </div>
 
-                {/* 3. PLĀNOJUMS UN BŪVNIECĪBA */}
-                <div className="lc-cat open" style={{ marginTop: 8 }}>
-                  <div className="lc-cat-hdr">
-                    <div className="lc-tile" style={{ background: '#ece5f6', color: '#6a45a8' }}>🗺️</div>
-                    <span style={{ fontWeight: 700, fontSize: 13, flex: 1 }}>Plānojums un būvniecība</span>
-                  </div>
-                  <div className="lc-layers">
-                    <div className={`lc-row ${showZoning ? 'on' : ''}`} onClick={() => setShowZoning(!showZoning)}>
-                      <div className="lc-swatch" style={{ background: '#e8a060' }} />
-                      <span className="lc-row-name">TAPIS Teritorijas zonējums</span>
-                      {currentZoom < 6 && <span className="lc-row-hint">pietuviniet</span>}
-                      <button className={`lc-tog ${showZoning ? 'on' : ''}`} type="button" tabIndex={-1}>
-                        <div className="lc-tog-k" />
-                      </button>
+                  {/* 2. SLUDINĀJUMI */}
+                  <div className={`lc-cat ${openCats.has('sludinajumi') ? 'open' : ''}`}>
+                    <button
+                      type="button"
+                      className="lc-cat-hdr"
+                      aria-expanded={openCats.has('sludinajumi')}
+                      onClick={() => toggleCat('sludinajumi')}
+                    >
+                      <div className="lc-tile" style={{ background: '#FBEADB', color: '#B25A22' }}>
+                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8Z"/><circle cx="7.5" cy="7.5" r="1.3"/>
+                        </svg>
+                      </div>
+                      <div className="lc-cat-txt">
+                        <span className="lc-cat-name">Sludinājumi</span>
+                      </div>
+                      <span className={`lc-pill ${sludinajumiActive > 0 ? 'active' : ''}`}>
+                        {sludinajumiActive > 0 ? `${sludinajumiActive}/1` : '1'}
+                      </span>
+                      <span className="lc-cat-chev">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="m6 9 6 6 6-6" />
+                        </svg>
+                      </span>
+                    </button>
+                    <div className="lc-layers">
+                      <div className={`lc-row ${showListings ? 'on' : ''}`} onClick={(e) => { e.stopPropagation(); setShowListings(!showListings); }}>
+                        <div className="lc-swatch" style={{ background: '#2f8a55' }} />
+                        <span className="lc-row-name">ss.com sludinājumi</span>
+                        <button className={`lc-tog ${showListings ? 'on' : ''}`} type="button" tabIndex={-1}>
+                          <div className="lc-tog-k" />
+                        </button>
+                      </div>
                     </div>
-                    <div className={`lc-row ${showConstruction ? 'on' : ''}`} onClick={() => setShowConstruction(!showConstruction)}>
-                      <div className="lc-swatch" style={{ background: '#f59e0b' }} />
-                      <span className="lc-row-name">Būvniecības ieceres (BIS)</span>
-                      {currentZoom < 8 && <span className="lc-row-hint">pietuviniet</span>}
-                      <button className={`lc-tog ${showConstruction ? 'on' : ''}`} type="button" tabIndex={-1}>
-                        <div className="lc-tog-k" />
-                      </button>
-                    </div>
                   </div>
-                </div>
 
-                {/* 4. DABA, MEŽS UN IEROBEŽOJUMI */}
-                <div className="lc-cat open" style={{ marginTop: 8 }}>
-                  <div className="lc-cat-hdr">
-                    <div className="lc-tile" style={{ background: '#e1f0e3', color: '#2f7a45' }}>🌲</div>
-                    <span style={{ fontWeight: 700, fontSize: 13, flex: 1 }}>Daba, mežs un ierobežojumi</span>
-                  </div>
-                  <div className="lc-layers">
-                    <div className={`lc-row ${showForests ? 'on' : ''}`} onClick={() => setShowForests(!showForests)}>
-                      <div className="lc-swatch" style={{ background: '#2e7d32' }} />
-                      <span className="lc-row-name">Meža nogabali (VMD)</span>
-                      {currentZoom < 9 && <span className="lc-row-hint">pietuviniet</span>}
-                      <button className={`lc-tog ${showForests ? 'on' : ''}`} type="button" tabIndex={-1}>
-                        <div className="lc-tog-k" />
-                      </button>
-                    </div>
-                    <div className={`lc-row ${showServituti ? 'on' : ''}`} onClick={() => setShowServituti(!showServituti)}>
-                      <div className="lc-swatch" style={{ background: '#ff8f00' }} />
-                      <span className="lc-row-name">Ceļu servitūti</span>
-                      {currentZoom < 10 && <span className="lc-row-hint">pietuviniet</span>}
-                      <button className={`lc-tog ${showServituti ? 'on' : ''}`} type="button" tabIndex={-1}>
-                        <div className="lc-tog-k" />
-                      </button>
-                    </div>
-                    <div className={`lc-row ${showProtected ? 'on' : ''}`} onClick={() => setShowProtected(!showProtected)}>
-                      <div className="lc-swatch" style={{ background: '#15803d' }} />
-                      <span className="lc-row-name">Dabas liegumi un mikroliegumi</span>
-                      <button className={`lc-tog ${showProtected ? 'on' : ''}`} type="button" tabIndex={-1}>
-                        <div className="lc-tog-k" />
-                      </button>
-                    </div>
-                    <div className={`lc-row ${showNature ? 'on' : ''}`} onClick={() => setShowNature(!showNature)}>
-                      <div className="lc-swatch" style={{ background: '#166534' }} />
-                      <span className="lc-row-name">Dižkoki un dabas pieminekļi</span>
-                      {currentZoom < 9 && <span className="lc-row-hint">pietuviniet</span>}
-                      <button className={`lc-tog ${showNature ? 'on' : ''}`} type="button" tabIndex={-1}>
-                        <div className="lc-tog-k" />
-                      </button>
+                  {/* 3. DARĪJUMI UN CENAS */}
+                  <div className={`lc-cat ${openCats.has('darijumi') ? 'open' : ''}`}>
+                    <button
+                      type="button"
+                      className="lc-cat-hdr"
+                      aria-expanded={openCats.has('darijumi')}
+                      onClick={() => toggleCat('darijumi')}
+                    >
+                      <div className="lc-tile" style={{ background: '#E1ECF8', color: '#2F64A8' }}>
+                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="m3 17 6-6 4 4 8-8"/><path d="M15 7h6v6"/>
+                        </svg>
+                      </div>
+                      <div className="lc-cat-txt">
+                        <span className="lc-cat-name">Darījumi un cenas</span>
+                      </div>
+                      <span className={`lc-pill ${darijumiActive > 0 ? 'active' : ''}`}>
+                        {darijumiActive > 0 ? `${darijumiActive}/1` : '1'}
+                      </span>
+                      <span className="lc-cat-chev">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="m6 9 6 6 6-6" />
+                        </svg>
+                      </span>
+                    </button>
+                    <div className="lc-layers">
+                      <div className={`lc-row ${showTransactions ? 'on' : ''}`} onClick={(e) => { e.stopPropagation(); setShowTransactions(!showTransactions); }}>
+                        <div className="lc-swatch" style={{ background: '#7b1fa2' }} />
+                        <span className="lc-row-name">VZD darījumu vēsture</span>
+                        <button className={`lc-tog ${showTransactions ? 'on' : ''}`} type="button" tabIndex={-1}>
+                          <div className="lc-tog-k" />
+                        </button>
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                {/* 5. VIDES RISKI UN PIESĀRŅOJUMS */}
-                <div className="lc-cat open" style={{ marginTop: 8 }}>
-                  <div className="lc-cat-hdr">
-                    <div className="lc-tile" style={{ background: '#fee2e2', color: '#dc2626' }}>⚠️</div>
-                    <span style={{ fontWeight: 700, fontSize: 13, flex: 1 }}>Vides riski & Piesārņojums</span>
+                  {/* 4. RISKI */}
+                  <div className={`lc-cat ${openCats.has('riski') ? 'open' : ''}`}>
+                    <button
+                      type="button"
+                      className="lc-cat-hdr"
+                      aria-expanded={openCats.has('riski')}
+                      onClick={() => toggleCat('riski')}
+                    >
+                      <div className="lc-tile" style={{ background: '#FBE3E0', color: '#B53628' }}>
+                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M10.3 4.2 2.6 17.5A2 2 0 0 0 4.3 20.5h15.4a2 2 0 0 0 1.7-3L13.7 4.2a2 2 0 0 0-3.4 0Z"/><path d="M12 10v4"/><path d="M12 17h.01"/>
+                        </svg>
+                      </div>
+                      <div className="lc-cat-txt">
+                        <span className="lc-cat-name">Riski</span>
+                      </div>
+                      <span className={`lc-pill ${riskiActive > 0 ? 'active' : ''}`}>
+                        {riskiActive > 0 ? `${riskiActive}/3` : '3'}
+                      </span>
+                      <span className="lc-cat-chev">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="m6 9 6 6 6-6" />
+                        </svg>
+                      </span>
+                    </button>
+                    <div className="lc-layers">
+                      <div className={`lc-row ${showFloods ? 'on' : ''}`} onClick={(e) => { e.stopPropagation(); setShowFloods(!showFloods); }}>
+                        <div className="lc-swatch" style={{ background: '#0284c7' }} />
+                        <span className="lc-row-name">LVĢMC Plūdu riska zonas</span>
+                        <button className={`lc-tog ${showFloods ? 'on' : ''}`} type="button" tabIndex={-1}>
+                          <div className="lc-tog-k" />
+                        </button>
+                      </div>
+                      <div className={`lc-row ${showPollution ? 'on' : ''}`} onClick={(e) => { e.stopPropagation(); setShowPollution(!showPollution); }}>
+                        <div className="lc-swatch" style={{ background: '#dc2626' }} />
+                        <span className="lc-row-name">VVD Piesārņotās vietas</span>
+                        <button className={`lc-tog ${showPollution ? 'on' : ''}`} type="button" tabIndex={-1}>
+                          <div className="lc-tog-k" />
+                        </button>
+                      </div>
+                      <div className={`lc-row ${showDegrading ? 'on' : ''}`} onClick={(e) => { e.stopPropagation(); setShowDegrading(!showDegrading); }}>
+                        <div className="lc-swatch" style={{ background: '#b91c1c' }} />
+                        <span className="lc-row-name">Vidi degradējošas ēkas (grausti)</span>
+                        {currentZoom < 10 && <span className="lc-row-hint">pietuviniet</span>}
+                        <button className={`lc-tog ${showDegrading ? 'on' : ''}`} type="button" tabIndex={-1}>
+                          <div className="lc-tog-k" />
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                  <div className="lc-layers">
-                    <div className={`lc-row ${showFloods ? 'on' : ''}`} onClick={() => setShowFloods(!showFloods)}>
-                      <div className="lc-swatch" style={{ background: '#0284c7' }} />
-                      <span className="lc-row-name">LVĢMC Plūdu riska zonas</span>
-                      <button className={`lc-tog ${showFloods ? 'on' : ''}`} type="button" tabIndex={-1}>
-                        <div className="lc-tog-k" />
-                      </button>
-                    </div>
-                    <div className={`lc-row ${showPollution ? 'on' : ''}`} onClick={() => setShowPollution(!showPollution)}>
-                      <div className="lc-swatch" style={{ background: '#dc2626' }} />
-                      <span className="lc-row-name">VVD Piesārņotās vietas</span>
-                      <button className={`lc-tog ${showPollution ? 'on' : ''}`} type="button" tabIndex={-1}>
-                        <div className="lc-tog-k" />
-                      </button>
-                    </div>
-                    <div className={`lc-row ${showDegrading ? 'on' : ''}`} onClick={() => setShowDegrading(!showDegrading)}>
-                      <div className="lc-swatch" style={{ background: '#b91c1c' }} />
-                      <span className="lc-row-name">Vidi degradējošas ēkas (grausti)</span>
-                      {currentZoom < 10 && <span className="lc-row-hint">pietuviniet</span>}
-                      <button className={`lc-tog ${showDegrading ? 'on' : ''}`} type="button" tabIndex={-1}>
-                        <div className="lc-tog-k" />
-                      </button>
-                    </div>
-                  </div>
-                </div>
 
-                {/* 6. ENERGOEFEKTIVITĀTE */}
-                <div className="lc-cat open" style={{ marginTop: 8 }}>
-                  <div className="lc-cat-hdr">
-                    <div className="lc-tile" style={{ background: '#fef3c7', color: '#d97706' }}>⚡</div>
-                    <span style={{ fontWeight: 700, fontSize: 13, flex: 1 }}>Ēka un energoefektivitāte</span>
-                  </div>
-                  <div className="lc-layers">
-                    <div className={`lc-row ${showEnergy ? 'on' : ''}`} onClick={() => setShowEnergy(!showEnergy)}>
-                      <div className="lc-swatch" style={{ background: '#d97706' }} />
-                      <span className="lc-row-name">BVKB Energosertifikāti (A+ līdz G)</span>
-                      <button className={`lc-tog ${showEnergy ? 'on' : ''}`} type="button" tabIndex={-1}>
-                        <div className="lc-tog-k" />
-                      </button>
+                  {/* 5. PLĀNOJUMS UN BŪVNIECĪBA */}
+                  <div className={`lc-cat ${openCats.has('planojums') ? 'open' : ''}`}>
+                    <button
+                      type="button"
+                      className="lc-cat-hdr"
+                      aria-expanded={openCats.has('planojums')}
+                      onClick={() => toggleCat('planojums')}
+                    >
+                      <div className="lc-tile" style={{ background: '#ECE5F6', color: '#6A45A8' }}>
+                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M3 21h18"/><path d="M5 21V9l7-5 7 5v12"/><path d="M9.5 21v-6h5v6"/>
+                        </svg>
+                      </div>
+                      <div className="lc-cat-txt">
+                        <span className="lc-cat-name">Plānojums un būvniecība</span>
+                      </div>
+                      <span className={`lc-pill ${planojumsActive > 0 ? 'active' : ''}`}>
+                        {planojumsActive > 0 ? `${planojumsActive}/2` : '2'}
+                      </span>
+                      <span className="lc-cat-chev">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="m6 9 6 6 6-6" />
+                        </svg>
+                      </span>
+                    </button>
+                    <div className="lc-layers">
+                      <div className={`lc-row ${showZoning ? 'on' : ''}`} onClick={(e) => { e.stopPropagation(); setShowZoning(!showZoning); }}>
+                        <div className="lc-swatch" style={{ background: '#e8a060' }} />
+                        <span className="lc-row-name">TAPIS Teritorijas zonējums</span>
+                        {currentZoom < 6 && <span className="lc-row-hint">pietuviniet</span>}
+                        <button className={`lc-tog ${showZoning ? 'on' : ''}`} type="button" tabIndex={-1}>
+                          <div className="lc-tog-k" />
+                        </button>
+                      </div>
+                      <div className={`lc-row ${showConstruction ? 'on' : ''}`} onClick={(e) => { e.stopPropagation(); setShowConstruction(!showConstruction); }}>
+                        <div className="lc-swatch" style={{ background: '#f59e0b' }} />
+                        <span className="lc-row-name">Būvniecības ieceres (BIS)</span>
+                        {currentZoom < 8 && <span className="lc-row-hint">pietuviniet</span>}
+                        <button className={`lc-tog ${showConstruction ? 'on' : ''}`} type="button" tabIndex={-1}>
+                          <div className="lc-tog-k" />
+                        </button>
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                {/* 7. APKĀRTNE UN INFRASTRUKTŪRA */}
-                <div className="lc-cat open" style={{ marginTop: 8 }}>
-                  <div className="lc-cat-hdr">
-                    <div className="lc-tile" style={{ background: '#ddf0ef', color: '#1f7a74' }}>🚌</div>
-                    <span style={{ fontWeight: 700, fontSize: 13, flex: 1 }}>Apkārtne un infrastruktūra</span>
-                  </div>
-                  <div className="lc-layers">
-                    <div className={`lc-row ${showSchools ? 'on' : ''}`} onClick={() => setShowSchools(!showSchools)}>
-                      <div className="lc-swatch" style={{ background: '#2563eb' }} />
-                      <span className="lc-row-name">Skolas un bērnudārzi</span>
-                      {currentZoom < 8 && <span className="lc-row-hint">pietuviniet</span>}
-                      <button className={`lc-tog ${showSchools ? 'on' : ''}`} type="button" tabIndex={-1}>
-                        <div className="lc-tog-k" />
-                      </button>
+                  {/* 6. DABA, MEŽS UN IEROBEŽOJUMI */}
+                  <div className={`lc-cat ${openCats.has('daba') ? 'open' : ''}`}>
+                    <button
+                      type="button"
+                      className="lc-cat-hdr"
+                      aria-expanded={openCats.has('daba')}
+                      onClick={() => toggleCat('daba')}
+                    >
+                      <div className="lc-tile" style={{ background: '#E1F0E3', color: '#2F7A45' }}>
+                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M12 22v-5"/><path d="M12 2 5.5 11h3.5L6 16h12l-3-5h3.5L12 2Z"/>
+                        </svg>
+                      </div>
+                      <div className="lc-cat-txt">
+                        <span className="lc-cat-name">Daba, mežs un ierobežojumi</span>
+                      </div>
+                      <span className={`lc-pill ${dabaActive > 0 ? 'active' : ''}`}>
+                        {dabaActive > 0 ? `${dabaActive}/4` : '4'}
+                      </span>
+                      <span className="lc-cat-chev">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="m6 9 6 6 6-6" />
+                        </svg>
+                      </span>
+                    </button>
+                    <div className="lc-layers">
+                      <div className={`lc-row ${showForests ? 'on' : ''}`} onClick={(e) => { e.stopPropagation(); setShowForests(!showForests); }}>
+                        <div className="lc-swatch" style={{ background: '#2e7d32' }} />
+                        <span className="lc-row-name">Meža nogabali (VMD)</span>
+                        {currentZoom < 9 && <span className="lc-row-hint">pietuviniet</span>}
+                        <button className={`lc-tog ${showForests ? 'on' : ''}`} type="button" tabIndex={-1}>
+                          <div className="lc-tog-k" />
+                        </button>
+                      </div>
+                      <div className={`lc-row ${showServituti ? 'on' : ''}`} onClick={(e) => { e.stopPropagation(); setShowServituti(!showServituti); }}>
+                        <div className="lc-swatch" style={{ background: '#ff8f00' }} />
+                        <span className="lc-row-name">Ceļu servitūti</span>
+                        {currentZoom < 10 && <span className="lc-row-hint">pietuviniet</span>}
+                        <button className={`lc-tog ${showServituti ? 'on' : ''}`} type="button" tabIndex={-1}>
+                          <div className="lc-tog-k" />
+                        </button>
+                      </div>
+                      <div className={`lc-row ${showProtected ? 'on' : ''}`} onClick={(e) => { e.stopPropagation(); setShowProtected(!showProtected); }}>
+                        <div className="lc-swatch" style={{ background: '#15803d' }} />
+                        <span className="lc-row-name">Dabas liegumi un mikroliegumi</span>
+                        <button className={`lc-tog ${showProtected ? 'on' : ''}`} type="button" tabIndex={-1}>
+                          <div className="lc-tog-k" />
+                        </button>
+                      </div>
+                      <div className={`lc-row ${showNature ? 'on' : ''}`} onClick={(e) => { e.stopPropagation(); setShowNature(!showNature); }}>
+                        <div className="lc-swatch" style={{ background: '#166534' }} />
+                        <span className="lc-row-name">Dižkoki un dabas pieminekļi</span>
+                        {currentZoom < 9 && <span className="lc-row-hint">pietuviniet</span>}
+                        <button className={`lc-tog ${showNature ? 'on' : ''}`} type="button" tabIndex={-1}>
+                          <div className="lc-tog-k" />
+                        </button>
+                      </div>
                     </div>
-                    <div className={`lc-row ${showTransports ? 'on' : ''}`} onClick={() => setShowTransports(!showTransports)}>
-                      <div className="lc-swatch" style={{ background: '#0284c7' }} />
-                      <span className="lc-row-name">Sabiedriskais transports</span>
-                      {currentZoom < 9 && <span className="lc-row-hint">pietuviniet</span>}
-                      <button className={`lc-tog ${showTransports ? 'on' : ''}`} type="button" tabIndex={-1}>
-                        <div className="lc-tog-k" />
-                      </button>
-                    </div>
                   </div>
-                </div>
 
-                {/* 8. PAMATNE */}
-                <div className="lc-cat open" style={{ marginTop: 8 }}>
-                  <div className="lc-cat-hdr">
-                    <div className="lc-tile" style={{ background: '#f1f5f9', color: '#0f172a' }}>🛰️</div>
-                    <span style={{ fontWeight: 700, fontSize: 13, flex: 1 }}>Pamatkartes</span>
+                  {/* 7. APKĀRTNE */}
+                  <div className={`lc-cat ${openCats.has('apkartne') ? 'open' : ''}`}>
+                    <button
+                      type="button"
+                      className="lc-cat-hdr"
+                      aria-expanded={openCats.has('apkartne')}
+                      onClick={() => toggleCat('apkartne')}
+                    >
+                      <div className="lc-tile" style={{ background: '#DDF0EF', color: '#1F7A74' }}>
+                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11Z"/><circle cx="12" cy="10" r="2.5"/>
+                        </svg>
+                      </div>
+                      <div className="lc-cat-txt">
+                        <span className="lc-cat-name">Apkārtne</span>
+                      </div>
+                      <span className={`lc-pill ${apkartneActive > 0 ? 'active' : ''}`}>
+                        {apkartneActive > 0 ? `${apkartneActive}/2` : '2'}
+                      </span>
+                      <span className="lc-cat-chev">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="m6 9 6 6 6-6" />
+                        </svg>
+                      </span>
+                    </button>
+                    <div className="lc-layers">
+                      <div className={`lc-row ${showSchools ? 'on' : ''}`} onClick={(e) => { e.stopPropagation(); setShowSchools(!showSchools); }}>
+                        <div className="lc-swatch" style={{ background: '#2563eb' }} />
+                        <span className="lc-row-name">Skolas un bērnudārzi</span>
+                        {currentZoom < 8 && <span className="lc-row-hint">pietuviniet</span>}
+                        <button className={`lc-tog ${showSchools ? 'on' : ''}`} type="button" tabIndex={-1}>
+                          <div className="lc-tog-k" />
+                        </button>
+                      </div>
+                      <div className={`lc-row ${showTransports ? 'on' : ''}`} onClick={(e) => { e.stopPropagation(); setShowTransports(!showTransports); }}>
+                        <div className="lc-swatch" style={{ background: '#0284c7' }} />
+                        <span className="lc-row-name">Sabiedriskais transports</span>
+                        {currentZoom < 9 && <span className="lc-row-hint">pietuviniet</span>}
+                        <button className={`lc-tog ${showTransports ? 'on' : ''}`} type="button" tabIndex={-1}>
+                          <div className="lc-tog-k" />
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                  <div className="lc-layers">
-                    <div className={`lc-row ${isSatellite ? 'on' : ''}`} onClick={() => setIsSatellite(!isSatellite)}>
-                      <div className="lc-swatch" style={{ background: '#0f172a' }} />
-                      <span className="lc-row-name">Satelīta aerofoto (Esri)</span>
-                      <button className={`lc-tog ${isSatellite ? 'on' : ''}`} type="button" tabIndex={-1}>
-                        <div className="lc-tog-k" />
-                      </button>
+
+                  {/* 8. ĒKA UN MAKSĀJUMI */}
+                  <div className={`lc-cat ${openCats.has('eka') ? 'open' : ''}`}>
+                    <button
+                      type="button"
+                      className="lc-cat-hdr"
+                      aria-expanded={openCats.has('eka')}
+                      onClick={() => toggleCat('eka')}
+                    >
+                      <div className="lc-tile" style={{ background: '#F5ECD6', color: '#8C6A16' }}>
+                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <rect x="5" y="3" width="14" height="18" rx="1.5"/><path d="M9 7h2M13 7h2M9 11h2M13 11h2M9 15h2M13 15h2"/>
+                        </svg>
+                      </div>
+                      <div className="lc-cat-txt">
+                        <span className="lc-cat-name">Ēka un maksājumi</span>
+                      </div>
+                      <span className={`lc-pill ${ekaActive > 0 ? 'active' : ''}`}>
+                        {ekaActive > 0 ? `${ekaActive}/2` : '2'}
+                      </span>
+                      <span className="lc-cat-chev">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="m6 9 6 6 6-6" />
+                        </svg>
+                      </span>
+                    </button>
+                    <div className="lc-layers">
+                      <div className={`lc-row ${showEnergy ? 'on' : ''}`} onClick={(e) => { e.stopPropagation(); setShowEnergy(!showEnergy); }}>
+                        <div className="lc-swatch" style={{ background: '#d97706' }} />
+                        <span className="lc-row-name">BVKB Energosertifikāti (A+ līdz G)</span>
+                        <button className={`lc-tog ${showEnergy ? 'on' : ''}`} type="button" tabIndex={-1}>
+                          <div className="lc-tog-k" />
+                        </button>
+                      </div>
+                      <div className={`lc-row ${isSatellite ? 'on' : ''}`} onClick={(e) => { e.stopPropagation(); setIsSatellite(!isSatellite); }}>
+                        <div className="lc-swatch" style={{ background: '#0f172a' }} />
+                        <span className="lc-row-name">Satelīta aerofoto (Esri)</span>
+                        <button className={`lc-tog ${isSatellite ? 'on' : ''}`} type="button" tabIndex={-1}>
+                          <div className="lc-tog-k" />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
