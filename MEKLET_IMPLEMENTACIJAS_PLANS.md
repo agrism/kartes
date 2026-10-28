@@ -164,11 +164,11 @@ Savienot tabulas klikšķus ar mūsu esošajiem analītikas logiem:
 
 ## 5. Izpildes Grafiks un Kontrolpunkti
 
-| Solis | Darbība | Rezultāts |
-| :--- | :--- | :--- |
-| **1. Solis** | Go API endpoints `/api/meklet-stats` un `/api/search` | Ātrs JSON API visiem 4 režīmiem ar filtriem un `bbox`. |
-| **2. Solis** | Frontend lapas karkass `/meklet` un URL stāvoklis | Režīmu pārslēdzējs, filtru josla un pamatdizains. |
-| **3. Solis** | Datu tabula un Paginācija | Pilns sludinājumu, darījumu un īpašumu saraksts ar cenām, m² un atlaidēm. |
-| **4. Solis** | Split-Screen kartes integrācija | Sinhronizēta MapLibre karte ar "Seko kartei" režīmu. |
-| **5. Solis** | Modālie logi un slīpēšana | Sludinājuma un īpašuma atskaišu atvēršana, mobilo ierīču adaptācija. |
-| **6. Solis** | Testēšana un palaišana produkcijā | Build, deploy uz `kartes.kilograms.lv/meklet` un gala verifikācija. |
+| Solis | Darbība | Rezultāts | Statuss |
+| :--- | :--- | :--- | :--- |
+| **1. Solis** | Go API endpoints `/api/meklet-stats` un `/api/search` | Ātrs JSON API visiem 4 režīmiem ar filtriem un `bbox`. | ✅ Pabeigts un notestēts |
+| **2. Solis** | Frontend lapas karkass `/meklet` un URL stāvoklis | Režīmu pārslēdzējs, filtru josla un pamatdizains. | ✅ Pabeigts |
+| **3. Solis** | Datu tabula un Paginācija | Pilns sludinājumu, darījumu un īpašumu saraksts ar cenām, m² un atlaidēm. | ✅ Pabeigts |
+| **4. Solis** | Split-Screen kartes integrācija | Sinhronizēta MapLibre karte ar "Seko kartei" režīmu. | ✅ Pabeigts |
+| **5. Solis** | Modālie logi un slīpēšana | Sludinājuma un īpašuma atskaišu atvēršana, mobilo ierīču adaptācija. | ✅ Pabeigts |
+| **6. Solis** | Testēšana un palaišana produkcijā | Build, deploy uz `kartes.kilograms.lv/meklet` un gala verifikācija. | ✅ Izvietots produkcijā (200 OK) |
