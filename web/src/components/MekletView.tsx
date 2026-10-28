@@ -11,12 +11,14 @@ interface MekletStats {
 interface MekletViewProps {
   onOpenListingModal?: (item: any) => void;
   onOpenParcelModal?: (code: string) => void;
+  onOpenLightbox?: (images: string[], index?: number) => void;
   onClose?: () => void;
 }
 
 export const MekletView: React.FC<MekletViewProps> = ({
   onOpenListingModal,
   onOpenParcelModal,
+  onOpenLightbox,
   onClose,
 }) => {
   // 1. Galvenais režīms
@@ -718,7 +720,19 @@ export const MekletView: React.FC<MekletViewProps> = ({
                       <>
                         <td className="meklet-td-photo">
                           {row.images && row.images.length > 0 ? (
-                            <div className="meklet-thumb-box">
+                            <div
+                              className="meklet-thumb-box"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (onOpenLightbox) {
+                                  onOpenLightbox(row.images, 0);
+                                } else if (onOpenListingModal) {
+                                  onOpenListingModal(row);
+                                }
+                              }}
+                              title="Pietuvināt attēlus"
+                              style={{ cursor: 'pointer' }}
+                            >
                               <img src={row.images[0]} alt="" loading="lazy" />
                               {row.images.length > 1 && (
                                 <span className="meklet-photo-count">📷 {row.images.length}</span>
@@ -792,7 +806,16 @@ export const MekletView: React.FC<MekletViewProps> = ({
                       <>
                         <td className="meklet-td-photo">
                           {row.images && row.images.length > 0 ? (
-                            <img src={row.images[0]} alt="" style={{ width: '60px', height: '45px', objectFit: 'cover', borderRadius: '4px' }} />
+                            <img
+                              src={row.images[0]}
+                              alt=""
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (onOpenLightbox) onOpenLightbox(row.images, 0);
+                              }}
+                              style={{ width: '60px', height: '45px', objectFit: 'cover', borderRadius: '4px', cursor: 'pointer' }}
+                              title="Pietuvināt attēlu"
+                            />
                           ) : (
                             <div className="meklet-thumb-placeholder">Izsole</div>
                           )}

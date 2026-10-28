@@ -274,6 +274,51 @@ export default function App() {
       });
   };
 
+  // Attēlu priekšskatījuma modāls (lightbox popup)
+  const [imageLightbox, setImageLightbox] = useState<{
+    open: boolean;
+    images: string[];
+    currentIndex: number;
+  }>({ open: false, images: [], currentIndex: 0 });
+
+  const openLightbox = (images: string[], index: number = 0) => {
+    if (!images || images.length === 0) return;
+    setImageLightbox({
+      open: true,
+      images,
+      currentIndex: Math.max(0, Math.min(index, images.length - 1)),
+    });
+  };
+
+  const closeLightbox = () => {
+    setImageLightbox((prev) => ({ ...prev, open: false }));
+  };
+
+  const nextLightboxImage = () => {
+    setImageLightbox((prev) => ({
+      ...prev,
+      currentIndex: (prev.currentIndex + 1) % prev.images.length,
+    }));
+  };
+
+  const prevLightboxImage = () => {
+    setImageLightbox((prev) => ({
+      ...prev,
+      currentIndex: (prev.currentIndex - 1 + prev.images.length) % prev.images.length,
+    }));
+  };
+
+  useEffect(() => {
+    if (!imageLightbox.open) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeLightbox();
+      if (e.key === 'ArrowRight') nextLightboxImage();
+      if (e.key === 'ArrowLeft') prevLightboxImage();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [imageLightbox.open, imageLightbox.images.length]);
+
   useEffect(() => {
     (window as any).__openListingHistory = (itemStr: string) => {
       try {
@@ -283,6 +328,9 @@ export default function App() {
     };
     (window as any).__openParcelReport = (code: string) => {
       if (code) fetchParcelDetails(code);
+    };
+    (window as any).__openLightbox = (images: string[], idx: number = 0) => {
+      openLightbox(images, idx);
     };
     (window as any).__closeCurrentPopup = () => {
       if (currentPopupRef.current) {
@@ -2912,6 +2960,7 @@ export default function App() {
         <MekletView
           onOpenListingModal={(item) => openHistoryModal(item)}
           onOpenParcelModal={(code) => fetchParcelDetails(code)}
+          onOpenLightbox={(images, idx) => openLightbox(images, idx)}
           onClose={() => navigateTo('map')}
         />
       )}
@@ -4155,13 +4204,12 @@ export default function App() {
                     </div>
                     <div className="hd-gallery-grid">
                       {historyModal.history.images.map((imgUrl: string, idx: number) => (
-                        <a
-                          href={imgUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
+                        <div
                           key={idx}
-                          title="Atvērt pilna izmēra attēlu"
+                          title="Pietuvināt attēlu"
                           className="hd-gal-link"
+                          style={{ cursor: 'pointer' }}
+                          onClick={() => openLightbox(historyModal.history.images, idx)}
                         >
                           <img
                             className="hd-gal-img"
@@ -4173,7 +4221,7 @@ export default function App() {
                               (e.target as HTMLElement).style.display = 'none';
                             }}
                           />
-                        </a>
+                        </div>
                       ))}
                     </div>
                   </div>
@@ -4201,6 +4249,76 @@ export default function App() {
                   </a>
                 </div>
               </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 6. PILNA IZMĒRA ATTĒLU LIGHTBOX MODĀLS */}
+      {imageLightbox.open && imageLightbox.images.length > 0 && (
+        <div className="kk-lightbox-overlay" onClick={closeLightbox}>
+          <div className="kk-lightbox-dialog" onClick={(e) => e.stopPropagation()}>
+            {/* Aizvēršanas poga */}
+            <button
+              type="button"
+              className="kk-lightbox-close"
+              onClick={closeLightbox}
+              title="Aizvērt (Esc)"
+            >
+              ✕
+            </button>
+
+            {/* Skaitītājs */}
+            <div className="kk-lightbox-counter">
+              {imageLightbox.currentIndex + 1} / {imageLightbox.images.length}
+            </div>
+
+            {/* Bultiņa pa kreisi */}
+            {imageLightbox.images.length > 1 && (
+              <button
+                type="button"
+                className="kk-lightbox-nav kk-lightbox-prev"
+                onClick={prevLightboxImage}
+                title="Iepriekšējais attēls (←)"
+              >
+                ‹
+              </button>
+            )}
+
+            {/* Galvenais attēls */}
+            <div className="kk-lightbox-img-wrap">
+              <img
+                src={imageLightbox.images[imageLightbox.currentIndex]}
+                alt={`Attēls ${imageLightbox.currentIndex + 1}`}
+                className="kk-lightbox-img"
+              />
+            </div>
+
+            {/* Bultiņa pa labi */}
+            {imageLightbox.images.length > 1 && (
+              <button
+                type="button"
+                className="kk-lightbox-nav kk-lightbox-next"
+                onClick={nextLightboxImage}
+                title="Nākamais attēls (→)"
+              >
+                ›
+              </button>
+            )}
+
+            {/* Apakšējā miniatūru josla */}
+            {imageLightbox.images.length > 1 && (
+              <div className="kk-lightbox-thumbs">
+                {imageLightbox.images.map((img, i) => (
+                  <div
+                    key={i}
+                    className={`kk-lightbox-thumb ${i === imageLightbox.currentIndex ? 'active' : ''}`}
+                    onClick={() => setImageLightbox((prev) => ({ ...prev, currentIndex: i }))}
+                  >
+                    <img src={img} alt="" loading="lazy" />
+                  </div>
+                ))}
+              </div>
             )}
           </div>
         </div>
