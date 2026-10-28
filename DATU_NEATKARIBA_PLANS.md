@@ -18,7 +18,7 @@
 | **Piesārņotās vietas** | Mūsu Martin (`/tiles/pollution_sites/`) | VVD atvērtie dati (`data.gov.lv`) | ✅ 100% Neatkarīgs |
 | **VZD Darījumu vēsture (Rīga)** | Mūsu PostGIS (`kartes-db`) | VZD NĪTB atvērtie dati (`data.gov.lv`) | ✅ 100% Neatkarīgs |
 | **1. Sludinājumu punkti & dzinējs** | `web/public/data/listings-pts.json` | Pašu multi-source skreiperi (`ss.com`, `city24.lv`, `izsoles.ta.gov.lv`) ar PostGIS ģeokodēšanu, kadastra piesaisti un Smart Reaper | ✅ **100% Neatkarīgs** |
-| **2. Darījumu tālummaiņas punkti ($Z < 14$)** | `web/public/data/tx-pts.json` | Ģenerēts no mūsu PostGIS `transactions` | ⏳ **Jāveic (2. uzdevums)** |
+| **2. Darījumu tālummaiņas punkti ($Z < 14$)** | `web/public/data/tx-pts.json` | 100% ģenerēts no mūsu PostGIS `transactions` ar `generate_tx_pts.py` un dinamiski caur `/api/tx-pts` | ✅ **100% Neatkarīgs** |
 | **3. Zemes vienības & būves visā Latvijā** | Mūsu PostGIS (`kartes-db`) + Martin | VZD Kadastra atvērtie dati (1 055 605 zemes vienības, 1 472 356 ēkas) | ✅ **100% Neatkarīgs** |
 | **4. Valsts plānojuma & risku slāņi** | Mūsu PostGIS (`kartes-db`) + Martin | PostGIS + Martin (TAPIS, BIS, VMD, LVĢMC, DAP, Rīgas dome) | ✅ **100% Neatkarīgs** |
 | **5. Go API & Nginx proxy neatkarība** | Mūsu PostGIS + Martin (port 3050) | 0% proxy uz kadastrakarte.lv, 100% lokāls kodols | ✅ **100% Neatkarīgs** |
@@ -57,12 +57,14 @@
 
 ---
 
-### 📌 2. Uzdevums: Vietējā Darījumu Klasteru Ģenerēšana ($Z < 14$)
-- [ ] **2.1. Punktu ģenerēšanas skripts:**
-  - Izveidot skriptu `importer/generate_tx_pts.py`, kas nolasa visus darījumus no mūsu PostGIS tabulas `transactions`.
-  - Pārvērst koordinātas delta-kodētā masīvā vai kompaktā GeoJSON formātā (identiski kā `tx-pts.json`).
-- [ ] **2.2. Automātiska regulārā atjaunošana:**
-  - Pievienot šo soli pie katras VZD darījumu ielādes, lai `web/public/data/tx-pts.json` vienmēr tiktu ģenerēts no mūsu pašu datubāzes.
+### 📌 2. Uzdevums: Vietējā Darījumu Klasteru Ģenerēšana ($Z < 14$) - ✅ PABEIGTS
+- [x] **2.1. Punktu ģenerēšanas skripts:**
+  - Izveidots skripts `importer/generate_tx_pts.py`, kas nolasa visus darījumus no mūsu PostGIS tabulas `public.transactions` (>197 000 darījumu punktu).
+  - Sakārto punktus telpiski un veic delta-kodēšanu (`[dx, dy, type, ...]`), ģenerējot kompaktu `tx-pts.json` failu.
+- [x] **2.2. Dinamiskais Go API gala punkts:**
+  - Izveidots endpoints `/api/tx-pts` Go API kodolā (`api/main.go`), kas nodrošina dinamisku darījumu punktu padošanu tieši no PostGIS ar atmiņas kešošanu un 1-stundas `Cache-Control`.
+- [x] **2.3. Frontend integrācija:**
+  - `web/src/App.tsx` atjaunināts, lai ielādētu datus no `${API_BASE}/api/tx-pts` ar automātisku rezervi uz statisko `/data/tx-pts.json`.
 
 ---
 

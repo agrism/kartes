@@ -994,9 +994,16 @@ export default function App() {
         })
         .catch(() => {});
 
-      // 2. Fona darījumu punktu ielāde (apvieno ar sludinājumu klasteriem)
-      fetch('/data/tx-pts.json')
-        .then((r) => r.json())
+      // 2. Fona darījumu punktu ielāde (apvieno ar sludinājumu klasteriem Z < 14)
+      fetch(`${API_BASE}/api/tx-pts`)
+        .then((r) => {
+          if (!r.ok) throw new Error('API tx-pts unavailable');
+          return r.json();
+        })
+        .catch(() => {
+          // Rezerves ielāde no lokālā statiskā faila
+          return fetch('/data/tx-pts.json').then((r) => r.json());
+        })
         .then((txData) => {
           if (!Array.isArray(txData) || txData.length < 3) return;
           const loadedTx: any[] = [];

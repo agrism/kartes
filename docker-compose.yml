@@ -103,6 +103,7 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-kartes}:${POSTGRES_PASSWORD:-kartes_secret_password}@db:5432/${POSTGRES_DB:-kartes}
     volumes:
       - ./importer:/app
+      - ./web/public/data:/app/web_data
       - data_cache:/app/cache
     depends_on:
       db:

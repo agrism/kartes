@@ -71,6 +71,7 @@ func main() {
 	mux.HandleFunc("/api/auctions-geojson", handleAuctions)
 	mux.HandleFunc("/api/scraper-status", handleScraperStatus)
 	mux.HandleFunc("/api/scraper-runs", handleScraperStatus)
+	mux.HandleFunc("/api/tx-pts", handleTxPts)
 
 	handler := enableCORS(mux)
 
@@ -1280,5 +1281,82 @@ func handleScraperStatus(w http.ResponseWriter, r *http.Request) {
 		},
 		"runs": runs,
 	})
+}
+
+var (
+	txPtsCacheMutex sync.RWMutex
+	txPtsCacheBytes []byte
+	txPtsCacheTime  time.Time
+)
+
+// handleTxPts atgriež visus PostGIS darījumu punktus delta-kodētā masīvā klasterēšanai pie Z < 14
+func handleTxPts(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "public, max-age=3600")
+
+	txPtsCacheMutex.RLock()
+	if len(txPtsCacheBytes) > 0 && time.Since(txPtsCacheTime) < 30*time.Minute {
+		cached := txPtsCacheBytes
+		txPtsCacheMutex.RUnlock()
+		w.Write(cached)
+		return
+	}
+	txPtsCacheMutex.RUnlock()
+
+	if dbPool == nil {
+		http.Error(w, `{"error":"Datubāze nav pieejama"}`, http.StatusServiceUnavailable)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 25*time.Second)
+	defer cancel()
+
+	rows, err := dbPool.Query(ctx, `
+		SELECT 
+			round(ST_X(ST_Transform(geom, 4326))::numeric * 10000)::integer AS x,
+			round(ST_Y(ST_Transform(geom, 4326))::numeric * 10000)::integer AS y,
+			CASE 
+				WHEN property_type ILIKE '%būve%' THEN 1
+				WHEN property_type ILIKE '%zeme%' THEN 2
+				WHEN property_type = 'zv' THEN 2
+				ELSE 0
+			END AS ptype
+		FROM public.transactions
+		WHERE geom IS NOT NULL
+		ORDER BY y ASC, x ASC;
+	`)
+	if err != nil {
+		log.Printf("Kļūda atlasot darījumu punktus: %v", err)
+		http.Error(w, `{"error":"Kļūda atlasot datus"}`, http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var flat []int32
+	var prevX, prevY int32
+
+	for rows.Next() {
+		var x, y, ptype int32
+		if err := rows.Scan(&x, &y, &ptype); err == nil {
+			dx := x - prevX
+			dy := y - prevY
+			flat = append(flat, dx, dy, ptype)
+			prevX = x
+			prevY = y
+		}
+	}
+
+	bytes, err := json.Marshal(flat)
+	if err != nil {
+		http.Error(w, `{"error":"Kļūda kodējot datus"}`, http.StatusInternalServerError)
+		return
+	}
+
+	txPtsCacheMutex.Lock()
+	txPtsCacheBytes = bytes
+	txPtsCacheTime = time.Now()
+	txPtsCacheMutex.Unlock()
+
+	w.Write(bytes)
 }
 
