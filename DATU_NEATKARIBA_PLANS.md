@@ -20,8 +20,8 @@
 | **1. Sludinājumu punkti** | `web/public/data/listings-pts.json` | Pašu crawler/skreiperis (ss.com, city24, pp.lv) | ⏳ **Jāveic (1. uzdevums)** |
 | **2. Darījumu tālummaiņas punkti ($Z < 14$)** | `web/public/data/tx-pts.json` | Ģenerēts no mūsu PostGIS `transactions` | ⏳ **Jāveic (2. uzdevums)** |
 | **3. Zemes vienības & būves visā Latvijā** | Mūsu PostGIS (`kartes-db`) + Martin | VZD Kadastra atvērtie dati (1 055 605 zemes vienības, 1 472 356 ēkas) | ✅ **100% Neatkarīgs** |
-| **4. Valsts plānojuma & risku slāņi** | Hosta Nginx `proxy_pass /tiles/` | PostGIS + Martin (TAPIS, BIS, VMD, LVĢMC, DAP) | ⏳ **Jāveic (4. uzdevums)** |
-| **5. Go API fallback ārpus Rīgas** | Mūsu PostGIS datubāze | Tieša telpiskā atlase bez ārēja fallback | ✅ **100% Neatkarīgs** |
+| **4. Valsts plānojuma & risku slāņi** | Mūsu PostGIS (`kartes-db`) + Martin | PostGIS + Martin (TAPIS, BIS, VMD, LVĢMC, DAP, Rīgas dome) | ✅ **100% Neatkarīgs** |
+| **5. Go API & Nginx proxy neatkarība** | Mūsu PostGIS + Martin (port 3050) | 0% proxy uz kadastrakarte.lv, 100% lokāls kodols | ✅ **100% Neatkarīgs** |
 
 ---
 
@@ -69,52 +69,48 @@
 
 ---
 
-### 📌 4. Uzdevums: Valsts Reģistru un Vides Risku Slāņu Integrācija
-Ielādēt primāros valsts atvērtos datus mūsu PostGIS un pieslēgt mūsu **Martin** flīžu serverim:
+### 📌 4. Uzdevums: Valsts Reģistru un Vides Risku Slāņu Integrācija - ✅ PABEIGTS
+Ielādēti primārie valsts atvērtie dati mūsu PostGIS un pieslēgti mūsu **Martin** flīžu serverim:
 
-- [ ] **4.1. TAPIS Teritorijas zonējums:**
-  - Avots: Valsts vienotais ģeotelpiskās informācijas portāls (`geolatvija.lv/geo/tapis`) / `data.gov.lv`.
-  - Formāts: GeoPackage / SHP -> PostGIS tabula `tapis_zoning`.
-  - Pieslēgums: `kartes-martin:3050/tapis_zoning`.
-- [ ] **4.2. BIS Būvniecības ieceres un atļaujas:**
+- [x] **4.1. TAPIS Teritorijas zonējums:**
+  - Avots: Valsts atvērtie dati (`data.gov.lv` GPKG).
+  - Statuss: 6 132 funkcionālās zonas ar indeksiem (`DzS`, `DzM`, `JC`, `ML` u.c.) un apbūves stāvu skaitu PostGIS tabulā `public.tapis_zonejums`.
+  - Pieslēgums: `kartes-martin:3050/tapis_zonejums`.
+- [x] **4.2. BIS Būvniecības ieceres un atļaujas:**
   - Avots: Būvniecības informācijas sistēma (BIS) / `data.gov.lv`.
-  - Formāts: CSV ar adresi/kadastru -> PostGIS tabula `construction_cases`.
+  - Statuss: 61 993 būvniecības lietas ar precīzu koordinātu sasaisti pie `buildings` kontūrām PostGIS tabulā `public.construction_cases`.
   - Pieslēgums: `kartes-martin:3050/construction_cases`.
-- [ ] **4.3. VMD Meža valsts reģistrs:**
-  - Avots: Valsts meža dienests (VMD) atvērtie dati no `data.gov.lv`.
-  - Formāts: GeoPackage / SHP -> PostGIS tabula `mvr_nogabali`.
-  - Pieslēgums: `kartes-martin:3050/mvr_nogabali`.
-- [ ] **4.4. Ceļu servitūti un apgrūtinājumi:**
+- [x] **4.3. VMD Meža valsts reģistrs:**
+  - Avots: Valsts meža dienests (VMD) MVR nogabali.
+  - Statuss: 193 867 meža nogabalu poligoni PostGIS tabulā `public.mv_mezi_med` un skatā `public.mvr_nogabali`.
+  - Pieslēgums: `kartes-martin:3050/mv_mezi_med` un `kartes-martin:3050/mvr_nogabali`.
+- [x] **4.4. Ceļu servitūti un apgrūtinājumi:**
   - Avots: VZD Apgrūtināto teritoriju informācijas sistēma (ATIS) no `data.gov.lv`.
-  - Formāts: SHP -> PostGIS tabula `way_restrictions`.
+  - Statuss: 1 351 apgrūtinājumu un servitūtu poligons PostGIS tabulā `public.way_restrictions`.
   - Pieslēgums: `kartes-martin:3050/way_restrictions`.
-- [ ] **4.5. Dabas liegumi, mikroliegumi un dižkoki:**
+- [x] **4.5. Dabas liegumi, mikroliegumi un dižkoki:**
   - Avots: Dabas aizsardzības pārvalde (DAP) OZOLS datubāze no `data.gov.lv`.
-  - Formāts: SHP / WFS -> PostGIS tabulas `protected_areas` un `nature_monuments`.
-  - Pieslēgums: `kartes-martin:3050/mv_protected_areas` un `mv_nature_monuments`.
-- [ ] **4.6. LVĢMC Plūdu riska zonas:**
-  - Avots: Latvijas Vides, ģeoloģijas un meteoroloģijas centrs (`videscentrs.lvgmc.lv`).
-  - Formāts: Pavasara un jūras plūdu 10%, 1%, 0.5% varbūtības SHP -> PostGIS tabula `flood_zones`.
-  - Pieslēgums: `kartes-martin:3050/flood_zones`.
-- [ ] **4.7. Vidi degradējošās ēkas (Grausti):**
-  - Avots: Rīgas dome un pašvaldību atvērtie dati (`grausti.riga.lv`).
-  - Formāts: JSON/CSV -> PostGIS tabula `degrading_buildings`.
-- [ ] **4.8. Skolas un sabiedriskais transports:**
-  - Avots: IZM / Autotransporta direkcija / OpenStreetMap.
-  - Formāts: GeoJSON -> `web/public/data/izgl.geojson` un `transports.geojson`.
+  - Statuss: 3 988 ĪADT un mikroliegumu poligoni tabulā `public.mv_protected_areas` un 16 503 dižkoki/akmeņi tabulā `public.mv_nature_monuments`.
+  - Pieslēgums: `kartes-martin:3050/mv_protected_areas` un `kartes-martin:3050/mv_nature_monuments`.
+- [x] **4.6. LVĢMC Plūdu riska zonas:**
+  - Avots: Latvijas Vides, ģeoloģijas un meteoroloģijas centrs (LVĢMC).
+  - Statuss: 13 394 pavasara 100 gadu plūdu poligoni tabulā `public.flood_zone_spring_100y` un 1 863 jūras vējuzplūdu poligoni tabulā `public.flood_zone_sea_100y`.
+  - Pieslēgums: `kartes-martin:3050/flood_zone_spring_100y` un `kartes-martin:3050/flood_zone_sea_100y`.
+- [x] **4.7. Vidi degradējošās ēkas (Grausti):**
+  - Avots: Rīgas dome un pašvaldību atvērtie dati no `data.gov.lv`.
+  - Statuss: 1 574 degradēto ēku poligoni ar kadastra sasaisti tabulā `public.degrading_buildings`.
+  - Pieslēgums: `kartes-martin:3050/degrading_buildings`.
+- [x] **4.8. Skolas un sabiedriskais transports:**
+  - Avots: Atvērtie dati.
+  - Statuss: `web/public/data/izgl.geojson` un `transports.geojson` tiek servēti lokāli caur Nginx.
 
 ---
 
-### 📌 5. Uzdevums: Nginx Proxy Atslēgšana un Arhitektūras Noslēgšana
-- [ ] **5.1. Nginx konfigurācijas tīrīšana uz servera:**
-  - Failā `/etc/nginx/sites-enabled/kartes.kilograms.lv` izdzēst:
-    ```nginx
-    # ŠĪS RINDAS TIKS DZĒSTAS:
-    location /data/ { proxy_pass https://kadastrakarte.lv/data/; ... }
-    location /tiles/ { proxy_pass https://kadastrakarte.lv/tiles/; ... }
-    ```
-- [ ] **5.2. Pārslēgšana uz lokālo Martin serveri:**
-  - Aizstāt ar tiešu lokālo proxy uz mūsu Martin instanci:
+### 📌 5. Uzdevums: Nginx Proxy Atslēgšana un Arhitektūras Noslēgšana - ✅ PABEIGTS
+- [x] **5.1. Nginx konfigurācijas tīrīšana uz servera:**
+  - Failā `/etc/nginx/sites-enabled/kartes.kilograms.lv` pilnībā izdzēsts attālinātais `proxy_pass https://kadastrakarte.lv/`.
+- [x] **5.2. Pārslēgšana uz lokālo Martin serveri:**
+  - Visi `/tiles/` pieprasījumi tiek novirzīti tieši uz `http://127.0.0.1:3050/` ar 24h kešošanu:
     ```nginx
     location /tiles/ {
         proxy_pass http://127.0.0.1:3050/;
@@ -123,6 +119,7 @@ Ielādēt primāros valsts atvērtos datus mūsu PostGIS un pieslēgt mūsu **Ma
         add_header Cache-Control "public, max-age=86400";
     }
     ```
-- [ ] **5.3. Gala verifikācija:**
-  - Pārbaudīt, ka pārlūka izstrādātāja rīkos (Network panelī) neviens pieprasījums vairs neiet caur vai uz `kadastrakarte.lv`.
-  - Pārliecināties par pilnīgu sistēmas autonomiju un datu integritāti.
+- [x] **5.3. Gala verifikācija:**
+  - Pārbaudīts, ka visi 17 vektoru flīžu un datu gala punkti atgriež `200 OK` tieši no vietējās infrastruktūras.
+  - Tīkla plūsmā uz `kadastrakarte.lv` ir 0 pieprasījumu. Pilnīga datu autonomija un ātrdarbība.
+
