@@ -17,15 +17,37 @@ DB_URL = os.environ.get("DATABASE_URL", "postgresql://kartes:kartes_secret_passw
 LISTINGS_GEOJSON_URL = "https://kadastrakarte.lv/api/listings-geojson.php?portal=ss.com&bbox=20.9,55.6,28.3,58.1"
 LISTING_HISTORY_URL = "https://kadastrakarte.lv/api/listing-history.php"
 
+def safe_float(val, max_val=1e12):
+    if val is None or val == "":
+        return None
+    try:
+        f = float(val)
+        if f > max_val or f < -max_val:
+            return None
+        return f
+    except Exception:
+        return None
+
+def safe_int(val, max_val=2147483647):
+    if val is None or val == "":
+        return None
+    try:
+        i = int(val)
+        if i > max_val or i < -max_val:
+            return None
+        return i
+    except Exception:
+        return None
+
 def parse_floor(floor_str):
     if not floor_str:
         return None, None
     try:
         parts = str(floor_str).split("/")
         if len(parts) == 2:
-            return int(parts[0].strip()), int(parts[1].strip())
+            return safe_int(parts[0].strip()), safe_int(parts[1].strip())
         elif len(parts) == 1:
-            return int(parts[0].strip()), None
+            return safe_int(parts[0].strip()), None
     except Exception:
         pass
     return None, None
@@ -54,9 +76,9 @@ def seed_initial_listings():
                     title TEXT,
                     description TEXT,
                     url TEXT,
-                    price NUMERIC(14, 2),
-                    price_per_m2 NUMERIC(10, 2),
-                    area_m2 NUMERIC(12, 2),
+                    price NUMERIC(18, 2),
+                    price_per_m2 NUMERIC(14, 2),
+                    area_m2 NUMERIC(18, 2),
                     rooms INT,
                     floor INT,
                     total_floors INT,
@@ -96,10 +118,10 @@ def seed_initial_listings():
                         props.get("snippet") or "",
                         props.get("snippet") or "",
                         props.get("url") or "",
-                        props.get("price"),
-                        props.get("price_per_m2"),
-                        props.get("area"),
-                        props.get("rooms"),
+                        safe_float(props.get("price")),
+                        safe_float(props.get("price_per_m2")),
+                        safe_float(props.get("area")),
+                        safe_int(props.get("rooms")),
                         fl,
                         tot_fl,
                         props.get("series"),
