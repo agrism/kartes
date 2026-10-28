@@ -17,7 +17,7 @@
 | **Ēku energosertifikāti** | Mūsu Martin (`/tiles/energy_certificates/`) | BVKB atvērtie dati (`data.gov.lv`) | ✅ 100% Neatkarīgs |
 | **Piesārņotās vietas** | Mūsu Martin (`/tiles/pollution_sites/`) | VVD atvērtie dati (`data.gov.lv`) | ✅ 100% Neatkarīgs |
 | **VZD Darījumu vēsture (Rīga)** | Mūsu PostGIS (`kartes-db`) | VZD NĪTB atvērtie dati (`data.gov.lv`) | ✅ 100% Neatkarīgs |
-| **1. Sludinājumu punkti** | `web/public/data/listings-pts.json` | Pašu crawler/skreiperis (ss.com, city24, pp.lv) | ⏳ **Jāveic (1. uzdevums)** |
+| **1. Sludinājumu punkti & dzinējs** | `web/public/data/listings-pts.json` | Pašu multi-source skreiperi (`ss.com`, `city24.lv`, `izsoles.ta.gov.lv`) ar PostGIS ģeokodēšanu, kadastra piesaisti un Smart Reaper | ✅ **100% Neatkarīgs** |
 | **2. Darījumu tālummaiņas punkti ($Z < 14$)** | `web/public/data/tx-pts.json` | Ģenerēts no mūsu PostGIS `transactions` | ⏳ **Jāveic (2. uzdevums)** |
 | **3. Zemes vienības & būves visā Latvijā** | Mūsu PostGIS (`kartes-db`) + Martin | VZD Kadastra atvērtie dati (1 055 605 zemes vienības, 1 472 356 ēkas) | ✅ **100% Neatkarīgs** |
 | **4. Valsts plānojuma & risku slāņi** | Mūsu PostGIS (`kartes-db`) + Martin | PostGIS + Martin (TAPIS, BIS, VMD, LVĢMC, DAP, Rīgas dome) | ✅ **100% Neatkarīgs** |
@@ -27,26 +27,33 @@
 
 ## 2. Veicamo Darbu Saraksts (Roadmap)
 
-### 📌 1. Uzdevums: Daudzu Avotu Sludinājumu Dzinējs & Dinamiskie Signāli (Multi-Portal Scraper Engine)
+### 📌 1. Uzdevums: Daudzu Avotu Sludinājumu Dzinējs & Dinamiskie Signāli (Multi-Portal Scraper Engine) - ✅ PABEIGTS
 - [x] **1.1. Multi-resursu datubāzes shēma:**
   - Izveidota tabula `public.listings` ar atbalstu vairākiem avotiem (`source`: `ss.com`, `city24.lv`, `pp.lv`, `izsoles.ta.gov.lv`), unikālu atslēgu `UNIQUE(source, external_id)`, cenu dinamiku (`first_price`, `last_price`), dienām tirgū (`days_on_market`), telpisko punktu `geom` un sasaisti ar kadastru `cadastre_code`.
+  - Pievienota kolonna `closed_at TIMESTAMP WITH TIME ZONE` un indekss `idx_listings_closed_at` noslēgto sludinājumu uzskaitei.
   - Izveidota tabula `public.listing_price_changes` vēsturisko cenu lēcienu un atlaižu reģistrēšanai (`listing_id`, `change_date`, `old_price`, `new_price`, `delta_amount`, `delta_percent`).
+  - Izveidota tabula `public.scraper_runs` ar cikliskās veselības, kļūdu un statistikas uzskaiti.
 - [x] **1.2. Vēsturiskā sākuma datu ielāde (Initial Historical Seed):**
-  - Ieviestais skripts `importer/seed_listings.py` sekmīgi ielādējis 2 367+ aktīvos sludinājumus kopā ar to vēsturisko cenu izmaiņu hronoloģiju, bildēm, dienām tirgū un sasaisti ar kadastra vienībām.
-- [x] **1.3. Modulārs skreiperu karkass (Multi-Source Crawler Framework):**
-  - `importer/scrapers/base.py` – unificēts modelis (`ListingItem`) un abstrakts bāzes skreiperis.
-  - `importer/scrapers/ss_com.py` – `ss.com` periodiskais skreiperis (dzīvokļi, mājas, zeme, telpas, īre).
-  - `importer/scrapers/city24.py` – `city24.lv` oficiālā REST API integrācija ar koordinātām un attēliem.
-  - `importer/scrapers/izsoles.py` – valsts tiesu un maksātnespējas izsoļu modulis (`izsoles.ta.gov.lv`) ar kadastra numuru piesaisti.
-  - `importer/scrapers/pipeline.py` – automātiska adrešu ģeokodēšana ar `addresses`, kadastra zemes vienības piesaiste ar `parcels` (`ST_Contains`), cenu dinamikas fiksēšana `listing_price_changes`.
-  - `importer/run_scrapers.py` – vienots palaidējs ar `--source`, `--limit`, `--mode` un `--daemon` atbalstu.
-- [x] **1.4. Go API gala punkti (Dinamiskie JSON dati):**
-  - `/api/listings` – atgriež filtrētus sludinājumus GeoJSON formātā (pēc `portal`, `bbox`, `limit`).
-  - `/api/listing-history` – atgriež sludinājuma cenu izmaiņu vēsturi, dienas tirgū un bilžu galeriju JSON formātā.
+  - Ieviestais skripts `importer/seed_listings.py` sekmīgi ielādējis aktīvos sludinājumus kopā ar to vēsturisko cenu izmaiņu hronoloģiju, bildēm, dienām tirgū un sasaisti ar kadastra vienībām (>21 400 sludinājumu datubāzē).
+- [x] **1.3. Modulārs skreiperu karkass & Smart Reaper:**
+  - `importer/scrapers/base.py` – unificēts modelis (`ListingItem`) un abstrakts bāzes skreiperis ar cenu tūkstošu atdalītāju normalizāciju.
+  - `importer/scrapers/ss_com.py` – `ss.com` periodiskais skreiperis (dzīvokļi, mājas, zeme, komerctelpas, īre) ar augstas izšķirtspējas `.800.jpg` attēlu un kadastra numuru ieguvi.
+  - `importer/scrapers/city24.py` – `city24.lv` oficiālā REST API integrācija ar koordinātām un fotogrāfijām.
+  - `importer/scrapers/izsoles.py` – valsts tiesu un maksātnespējas izsoļu modulis (`izsoles.ta.gov.lv`) ar 11-zīmju kadastra numuru automātisku nolasīšanu.
+  - `importer/scrapers/pipeline.py` – PostGIS ģeokodēšana ar `addresses`, kadastra zemes vienības noteikšana ar `parcels` (`ST_Contains`), cenu dinamikas fiksēšana, pirkstu nospiedumu (`fingerprint`) pārbaude un ID kolīziju novēršana.
+  - `importer/scrapers/reaper.py` – Smart Reaper (HTTP 404, slēgšanas teksta paziņojumi, automašīnu un citu kategoriju kolīziju atklāšana).
+  - `importer/run_scrapers.py` – vienots palaidējs ar `--source`, `--limit`, `--mode`, `--reap`, `--smart-reap` un `--daemon`.
+  - `scripts/scrape_listings.sh` – automatizācija ar `flock` bloķēšanu un `timeout 1200` watchdog aizsardzību periodiskajam `cron` darbam.
+- [x] **1.4. Go API gala punkti (Dinamiskie JSON dati & Monitorings):**
+  - `/api/listings` – atgriež filtrētus sludinājumus GeoJSON formātā (pēc `portal`, `bbox`, `price_drop`, `is_auction`, `is_active = true`).
+  - `/api/listings/{id}` – atgriež sludinājuma pilno aprakstu, fotogrāfijas un hronoloģisko cenu vēsturi (`price_history`).
   - `/api/popup-signals` – aprēķina un atgriež nekustamā īpašuma signālus tieši no mūsu PostGIS (darījumi, mediāna, apgrūtinājumi, zonējums, vides riski).
+  - `/api/scraper-status` & `/api/scraper-runs` – reāllaika skreiperu veselības audits un pēdējo 20 ciklu atskaite.
 - [x] **1.5. Frontend interaktīvā kartīte un vēstures logs:**
-  - Moderns sludinājuma uznirstošais logs (popup): fotogrāfija, cena ar €/m², specifikācija (istabas, m², stāvs), cenu samazinājuma bloks ar atlaides %, dienas tirgū, poga "Vēsture ➔", poga "Atvērt {source} ↗" un īpašuma signālu kopsavilkums tieši no PostGIS ar saiti uz pilno kadastra atskaiti.
-  - Vēstures modālais logs ar cenu izmaiņu hronoloģiju, cenu pieauguma/krituma atzīmēm, statistikas kartītēm un bilžu galeriju.
+  - Sludinājumu punkti tieši no mūsu Go API ar cenu birkām.
+  - Portālu filtri (SS.com, City24, Izsoles, Cenas kritumi).
+  - Uznirstošais logs (popup): fotogrāfija, cena ar €/m², specifikācija, atlaides %, dienas tirgū, ātrā saite uz portālu un īpašuma signālu kopsavilkums.
+  - Vēstures modālais logs ar cenu soļu grafiku un attēlu galeriju.
 
 ---
 
