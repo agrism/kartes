@@ -136,53 +136,22 @@ func handleHealth(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// /api/parcel-info?code=01000070001
-func handleParcelInfo(w http.ResponseWriter, r *http.Request) {
-	code := r.URL.Query().Get("code")
-	if code == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Parametrs 'code' ir obligāts"})
-		return
-	}
+// 1. Meklējam ēkas energoefektivitātes sertifikātu un piesārņojumu no lokālās DB
+type EnergyCert struct {
+	Class        string   `json:"class"`
+	HeatingKwhM2 *float64 `json:"heating_kwh_m2,omitempty"`
+	ValidUntil   string   `json:"valid_until,omitempty"`
+	Status       string   `json:"status,omitempty"`
+}
 
-	ctx, cancel := context.WithTimeout(r.Context(), 6*time.Second)
-	defer cancel()
+type PollutionNearby struct {
+	Name      string  `json:"name"`
+	Category  string  `json:"category"`
+	SiteType  string  `json:"site_type"`
+	DistanceM float64 `json:"distance_m"`
+}
 
-	query := `
-		SELECT code, COALESCE(address, ''), COALESCE(area_m2, 0), COALESCE(status, ''), COALESCE(cadastral_value, 0)
-		FROM public.parcels
-		WHERE code = $1
-		LIMIT 1;
-	`
-
-	var pCode, address, status string
-	var areaM2, cadValue float64
-
-	err := dbPool.QueryRow(ctx, query, code).Scan(&pCode, &address, &areaM2, &status, &cadValue)
-	if err != nil {
-		writeJSON(w, http.StatusNotFound, map[string]string{
-			"error": fmt.Sprintf("Zemes vienība ar kodu '%s' netika atrasta", code),
-		})
-		return
-	}
-
-	// Ja adrese vēl nav piesaistīta, veicam ātru telpisko vaicājumu no adrešu reģistra
-	if address == "" {
-		_ = dbPool.QueryRow(ctx, `
-			SELECT a.address
-			FROM public.parcels p
-			JOIN public.addresses a ON p.geom && a.geom AND ST_Contains(p.geom, a.geom)
-			WHERE p.code = $1
-			LIMIT 1;
-		`, code).Scan(&address)
-	}
-
-	// 1. Meklējam ēkas energoefektivitātes sertifikātu
-	type EnergyCert struct {
-		Class        string   `json:"class"`
-		HeatingKwhM2 *float64 `json:"heating_kwh_m2,omitempty"`
-		ValidUntil   string   `json:"valid_until,omitempty"`
-		Status       string   `json:"status,omitempty"`
-	}
+func getParcelLocalEnrichment(ctx context.Context, code string) (*EnergyCert, []PollutionNearby) {
 	var cert *EnergyCert
 	var eClass, eValid, eStatus string
 	var eKwh *float64
@@ -202,13 +171,6 @@ func handleParcelInfo(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// 2. Meklējam piesārņotās vietas 500m rādiusā
-	type PollutionNearby struct {
-		Name      string  `json:"name"`
-		Category  string  `json:"category"`
-		SiteType  string  `json:"site_type"`
-		DistanceM float64 `json:"distance_m"`
-	}
 	pollutionList := make([]PollutionNearby, 0)
 	pRows, pErr := dbPool.Query(ctx, `
 		SELECT ps.name, ps.category, ps.site_type, ROUND(ST_Distance(p.geom, ps.geom)) as dist
@@ -226,6 +188,162 @@ func handleParcelInfo(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	return cert, pollutionList
+}
+
+// /api/parcel-info?code=01000070001
+func handleParcelInfo(w http.ResponseWriter, r *http.Request) {
+	code := strings.TrimSpace(r.URL.Query().Get("code"))
+	if code == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Parametrs 'code' ir obligāts"})
+		return
+	}
+
+	// 1. Mēģinām iegūt pilno kadastra atskaiti no kadastrakarte.lv ar 3s noildzi
+	client := &http.Client{Timeout: 3 * time.Second}
+	upReq, err := http.NewRequestWithContext(r.Context(), "GET", "https://kadastrakarte.lv/api/parcel-info.php?code="+url.QueryEscape(code), nil)
+	if err == nil {
+		upReq.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+		upReq.Header.Set("Referer", "https://kadastrakarte.lv/")
+		resp, dErr := client.Do(upReq)
+		if dErr == nil && resp.StatusCode == http.StatusOK {
+			defer resp.Body.Close()
+			body, rErr := io.ReadAll(resp.Body)
+			if rErr == nil && len(body) > 30 && strings.Contains(string(body), `"parcel"`) {
+				var upstreamData map[string]any
+				if jErr := json.Unmarshal(body, &upstreamData); jErr == nil {
+					// Formatējam adresi kā vienotu teksta rindu, lai React nerastos kļūdas
+					var addrStr string
+					if addrObj, ok := upstreamData["address"].(map[string]any); ok {
+						parts := []string{}
+						street, _ := addrObj["street"].(string)
+						house, _ := addrObj["house"].(string)
+						town, _ := addrObj["town"].(string)
+						postIdx, _ := addrObj["post_index"].(string)
+						sh := strings.TrimSpace(street + " " + house)
+						if sh != "" {
+							parts = append(parts, sh)
+						}
+						if town != "" {
+							parts = append(parts, town)
+						}
+						if postIdx != "" {
+							parts = append(parts, postIdx)
+						}
+						addrStr = strings.Join(parts, ", ")
+						upstreamData["address_raw"] = addrObj
+						upstreamData["address"] = addrStr
+					} else if s, ok := upstreamData["address"].(string); ok {
+						addrStr = s
+					}
+
+					// Izgūstam platību un statusu
+					var areaM2 float64
+					if pMap, ok := upstreamData["parcel"].(map[string]any); ok {
+						if aStr, ok := pMap["area"].(string); ok {
+							areaM2, _ = strconv.ParseFloat(aStr, 64)
+						}
+						if sName, ok := pMap["status_name"].(string); ok && sName != "" {
+							upstreamData["status"] = sName
+						}
+					}
+					upstreamData["area_m2"] = areaM2
+
+					// Izgūstam kadastrālo vērtību (fiskālā vai pirmā pieejamā)
+					var cadVal float64
+					if valList, ok := upstreamData["parcel_valuations"].([]any); ok {
+						for _, vItem := range valList {
+							if vMap, ok := vItem.(map[string]any); ok {
+								if vMap["value_type"] == "fisc" {
+									if valStr, ok := vMap["value"].(string); ok {
+										cadVal, _ = strconv.ParseFloat(valStr, 64)
+									}
+									break
+								}
+							}
+						}
+						if cadVal == 0 && len(valList) > 0 {
+							if vMap, ok := valList[0].(map[string]any); ok {
+								if valStr, ok := vMap["value"].(string); ok {
+									cadVal, _ = strconv.ParseFloat(valStr, 64)
+								}
+							}
+						}
+					}
+					upstreamData["cadastral_value"] = cadVal
+
+					// Pievienojam BVKB energoefektivitātes un VVD piesārņojuma datus
+					cert, pollutionList := getParcelLocalEnrichment(r.Context(), code)
+					upstreamData["energy_cert"] = cert
+					upstreamData["pollution_nearby"] = pollutionList
+					upstreamData["code"] = code
+
+					writeJSON(w, http.StatusOK, upstreamData)
+					return
+				}
+			}
+		}
+	}
+
+	// 2. Lokālais PostGIS vaicājums kā drošs fallback
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	query := `
+		SELECT code, COALESCE(address, ''), COALESCE(area_m2, 0), COALESCE(status, ''), COALESCE(cadastral_value, 0)
+		FROM public.parcels
+		WHERE code = $1
+		LIMIT 1;
+	`
+
+	var pCode, address, status string
+	var areaM2, cadValue float64
+
+	err = dbPool.QueryRow(ctx, query, code).Scan(&pCode, &address, &areaM2, &status, &cadValue)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{
+			"error": fmt.Sprintf("Zemes vienība ar kodu '%s' netika atrasta", code),
+		})
+		return
+	}
+
+	// Ja adrese vēl nav piesaistīta, veicam ātru telpisko vaicājumu no adrešu reģistra
+	if address == "" {
+		_ = dbPool.QueryRow(ctx, `
+			SELECT a.address
+			FROM public.parcels p
+			JOIN public.addresses a ON p.geom && a.geom AND ST_Contains(p.geom, a.geom)
+			WHERE p.code = $1
+			LIMIT 1;
+		`, code).Scan(&address)
+	}
+
+	// Meklējam arī ēkas no lokālās DB
+	type LocalBuilding struct {
+		CadastreNr string  `json:"cadastre_nr"`
+		Floors     int     `json:"ground_floors"`
+		Year       int     `json:"exploit_year"`
+		Material   string  `json:"material,omitempty"`
+	}
+	buildingsList := make([]LocalBuilding, 0)
+	bRows, bErr := dbPool.Query(ctx, `
+		SELECT code, COALESCE(floors, 1), COALESCE(construction_year, 0), COALESCE(material, '')
+		FROM public.buildings
+		WHERE parcel_code = $1
+		ORDER BY code ASC
+		LIMIT 20;
+	`, code)
+	if bErr == nil {
+		defer bRows.Close()
+		for bRows.Next() {
+			var b LocalBuilding
+			if err := bRows.Scan(&b.CadastreNr, &b.Floors, &b.Year, &b.Material); err == nil {
+				buildingsList = append(buildingsList, b)
+			}
+		}
+	}
+
+	cert, pollutionList := getParcelLocalEnrichment(ctx, code)
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"code":             pCode,
@@ -233,6 +351,7 @@ func handleParcelInfo(w http.ResponseWriter, r *http.Request) {
 		"area_m2":          areaM2,
 		"status":           status,
 		"cadastral_value":  cadValue,
+		"buildings":        buildingsList,
 		"energy_cert":      cert,
 		"pollution_nearby": pollutionList,
 	})
@@ -570,7 +689,9 @@ func handleListingsGeoJSON(w http.ResponseWriter, r *http.Request) {
 				_ = json.Unmarshal(imagesRaw, &images)
 			}
 			thumb := ""
-			if len(images) > 0 {
+			if source != "" && extID != "" {
+				thumb = fmt.Sprintf("/listings/thumbs/%s_%s.webp", source, extID)
+			} else if len(images) > 0 {
 				thumb = images[0]
 			}
 

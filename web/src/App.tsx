@@ -41,12 +41,64 @@ interface PollutionNearbyInfo {
   distance_m: number;
 }
 
+interface ParcelPurpose {
+  purpose_name: string;
+  purpose_area?: string;
+}
+
+interface ParcelBuilding {
+  cadastre_nr: string;
+  name?: string;
+  use_kind_name?: string;
+  area?: string;
+  constr_area?: string;
+  ground_floors?: number;
+  underground_floors?: number;
+  exploit_year?: number;
+  deprecation?: string;
+  fisc_value?: string;
+  univ_value?: string;
+  building_address?: string;
+  apartment_count?: number;
+}
+
+interface ParcelEncumbrance {
+  kind_name: string;
+  establish_date?: string | null;
+  area?: string;
+  measure?: string;
+}
+
+interface ParcelValuation {
+  value_type: string;
+  value: string;
+  value_date?: string;
+}
+
+interface ParcelProperty {
+  property_kind?: string;
+  total_area?: string;
+  landbook_folio?: string;
+  landbook_office?: string;
+}
+
+interface ParcelOwnership {
+  ownership_status?: string;
+  person_status?: string;
+}
+
 interface ParcelInfo {
   code: string;
   address: string;
   area_m2: number;
   status: string;
   cadastral_value: number;
+  purposes?: ParcelPurpose[];
+  buildings?: ParcelBuilding[];
+  encumbrances?: ParcelEncumbrance[];
+  parcel_valuations?: ParcelValuation[];
+  property?: ParcelProperty;
+  ownership?: ParcelOwnership;
   energy_cert?: EnergyCertInfo | null;
   pollution_nearby?: PollutionNearbyInfo[];
 }
@@ -1784,16 +1836,33 @@ export default function App() {
         const portal = p.portal || 'ss.com';
         const dealType = p.deal_type === 'rent' ? 'rent' : 'sell';
         const dealLabel = dealType === 'rent' ? 'Izīrē' : 'Pārdod';
-        const address = p.addr || p.address || 'Nekustamais īpašums';
+
+        // Pilnā adrese: iela + māja + ciems/pilsēta + novads (bez dublēšanās)
+        const addrParts = [p.addr || p.address || ''];
+        const subParts = [p.town, p.district].filter(Boolean);
+        for (const sub of subParts) {
+          if (sub && !addrParts[0].toLowerCase().includes(sub.toLowerCase())) {
+            addrParts.push(sub);
+          }
+        }
+        const fullAddress = addrParts.filter(Boolean).join(', ') || 'Nekustamais īpašums';
+
         const days = Number(p.days || p.days_on_market) || 1;
         const url = p.url || 'https://www.ss.com/';
         const cadCode = p.cadastre_code || '';
-        const thumb = p.thumb || '';
+
+        // Drošs sīktēls no lokālā Nginx keša (/listings/thumbs/portal_mid.webp)
+        const mid = p.mid || p.id || '';
+        const thumbUrl = (portal && mid)
+          ? `/listings/thumbs/${portal}_${mid}.webp`
+          : (p.thumb || '');
+        const fallbackThumb = (p.images && p.images[0]) ? p.images[0] : (p.thumb || '');
+
         const itemStr = encodeURIComponent(JSON.stringify({
           id: p.id,
-          mid: p.mid || p.id,
+          mid: mid || p.id,
           portal,
-          addr: address,
+          addr: fullAddress,
           price,
           first_price: firstPrice,
           days,
@@ -1803,29 +1872,34 @@ export default function App() {
 
         const popupId = 'lpc-' + (p.id || Math.round(Math.random() * 100000));
 
-        let mediaHtml = '';
-        if (thumb) {
-          mediaHtml = `
-            <div class="lpc-media">
-              <img class="lpc-img" src="${thumb}" alt="${address}" onerror="this.closest('.lpc-media').style.display='none';" />
-              <div class="lpc-deal-tag ${dealType}">
-                <span class="lpc-dot"></span>
-                ${dealLabel}
-              </div>
-              <button class="lpc-close-btn" onclick="window.__closeCurrentPopup()" title="Aizvērt">✕</button>
-            </div>
-          `;
-        } else {
-          mediaHtml = `
-            <div class="lpc-header-no-img">
-              <div class="lpc-deal-tag ${dealType}">
-                <span class="lpc-dot"></span>
-                ${dealLabel}
-              </div>
-              <button class="lpc-close-btn" onclick="window.__closeCurrentPopup()" title="Aizvērt">✕</button>
-            </div>
-          `;
+        // Pārbīdām kartes skatu uz leju par 140px, lai kartīte un tās aizvēršanas poga nepaliktu aiz navigācijas joslas
+        if (m) {
+          m.easeTo({
+            center: [lng, lat],
+            offset: [0, 140],
+            duration: 350,
+          });
         }
+
+        const safeAddress = fullAddress.replace(/"/g, '&quot;');
+        const mediaHtml = `
+          <div class="lpc-media ${!thumbUrl ? 'no-img' : ''}">
+            ${thumbUrl ? `
+              <img 
+                class="lpc-img" 
+                src="${thumbUrl}" 
+                referrerpolicy="no-referrer" 
+                alt="${safeAddress}" 
+                onerror="if(!this.dataset.tried && '${fallbackThumb}' && this.src !== '${fallbackThumb}'){ this.dataset.tried='1'; this.src='${fallbackThumb}'; } else { this.style.display='none'; this.closest('.lpc-media').classList.add('no-img'); }"
+              />
+            ` : ''}
+            <div class="lpc-deal-tag ${dealType}">
+              <span class="lpc-dot"></span>
+              ${dealLabel}
+            </div>
+            <button class="lpc-close-btn" onclick="window.__closeCurrentPopup()" title="Aizvērt">✕</button>
+          </div>
+        `;
 
         let dropHtml = '';
         if (hasDrop) {
@@ -1882,7 +1956,7 @@ export default function App() {
                 <span class="lpc-price">${price.toLocaleString('lv-LV')} €</span>
                 ${ppm2 > 0 ? `<span class="lpc-ppm2">${Math.round(ppm2).toLocaleString('lv-LV')} €/m²</span>` : ''}
               </div>
-              <div class="lpc-address" title="${address}">${address}</div>
+              <div class="lpc-address" title="${safeAddress}">${fullAddress}</div>
               ${specsHtml}
               ${dropHtml}
               <div class="lpc-actions-row">
@@ -1904,9 +1978,10 @@ export default function App() {
         `;
 
         const popup = new maplibregl.Popup({
-          offset: 12,
+          offset: [0, -10],
           className: 'listing-popup-wrapper',
-          maxWidth: '350px',
+          maxWidth: '360px',
+          closeButton: false,
         })
           .setLngLat([lng, lat])
           .setHTML(html)
@@ -1986,6 +2061,15 @@ export default function App() {
         const url = p.url || `https://izsoles.ta.gov.lv/izsole/${p.id || ''}`;
         const cadCode = p.cadastre || p.parcel || '';
 
+        // Pārbīdām kartes skatu uz leju par 110px
+        if (m) {
+          m.easeTo({
+            center: [lng, lat],
+            offset: [0, 110],
+            duration: 300,
+          });
+        }
+
         const html = `
           <div class="listing-popup-card">
             <div class="lpc-header-no-img">
@@ -2021,9 +2105,10 @@ export default function App() {
         `;
 
         const popup = new maplibregl.Popup({
-          offset: 12,
+          offset: [0, -10],
           className: 'listing-popup-wrapper',
-          maxWidth: '350px',
+          maxWidth: '360px',
+          closeButton: false,
         })
           .setLngLat([lng, lat])
           .setHTML(html)
@@ -3599,6 +3684,120 @@ export default function App() {
               </div>
             </div>
 
+            {/* Lietošanas mērķi */}
+            {selectedParcel.purposes && selectedParcel.purposes.length > 0 && (
+              <div className="section-card">
+                <div className="section-title">🎯 Lietošanas mērķi ({selectedParcel.purposes.length})</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  {selectedParcel.purposes.map((p, idx) => (
+                    <div key={idx} style={{ padding: '8px 10px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                      <div style={{ fontWeight: 600, fontSize: '13px', color: '#1e293b' }}>{p.purpose_name}</div>
+                      {p.purpose_area && (
+                        <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
+                          Platība: {Number(p.purpose_area).toLocaleString('lv-LV')} m²
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Ēkas un būves */}
+            {selectedParcel.buildings && selectedParcel.buildings.length > 0 && (
+              <div className="section-card">
+                <div className="section-title">🏢 Reģistrētās ēkas ({selectedParcel.buildings.length})</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {selectedParcel.buildings.map((b, idx) => (
+                    <div key={idx} style={{ padding: '10px 12px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <div>
+                          <div style={{ fontWeight: 700, fontSize: '13.5px', color: '#0f172a' }}>{b.name || 'Būve'}</div>
+                          <div style={{ fontSize: '11px', color: '#64748b', fontFamily: 'monospace' }}>{b.cadastre_nr}</div>
+                        </div>
+                        {b.fisc_value && (
+                          <span style={{ fontWeight: 700, fontSize: '12.5px', color: '#15803d', background: '#f0fdf4', padding: '2px 8px', borderRadius: '6px' }}>
+                            {Number(b.fisc_value).toLocaleString('lv-LV')} €
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: '12px', color: '#475569', marginTop: '6px', display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
+                        {b.use_kind_name && <span>🏷️ {b.use_kind_name}</span>}
+                        {b.area && <span>📐 {Number(b.area).toLocaleString('lv-LV')} m²</span>}
+                        {b.ground_floors ? <span>🏢 {b.ground_floors} stāvi</span> : null}
+                        {b.exploit_year ? <span>📅 {b.exploit_year}. gads</span> : null}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Apgrūtinājumi un aizsargjoslas */}
+            {selectedParcel.encumbrances && selectedParcel.encumbrances.length > 0 && (
+              <div className="section-card">
+                <div className="section-title">⚖️ Apgrūtinājumi un aizsargjoslas ({selectedParcel.encumbrances.length})</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  {selectedParcel.encumbrances.map((e, idx) => (
+                    <div key={idx} style={{ padding: '8px 10px', background: '#fffbeb', borderRadius: '8px', border: '1px solid #fef3c7', fontSize: '12px' }}>
+                      <div style={{ fontWeight: 600, color: '#92400e' }}>{e.kind_name}</div>
+                      {e.area && (
+                        <div style={{ fontSize: '11px', color: '#b45309', marginTop: '2px' }}>
+                          Platība: {e.area} {e.measure || 'ha'}
+                          {e.establish_date && ` · Noteikts: ${e.establish_date}`}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Kadastrālās vērtības aprēķins */}
+            {selectedParcel.parcel_valuations && selectedParcel.parcel_valuations.length > 0 && (
+              <div className="section-card">
+                <div className="section-title">📊 Kadastrālās vērtības aprēķins</div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '8px' }}>
+                  {selectedParcel.parcel_valuations.map((v, idx) => {
+                    const typeLabels: Record<string, string> = {
+                      fisc: 'Fiskālā vērtība',
+                      prog: 'Prognozētā vērtība',
+                      univ: 'Universālā vērtība',
+                    };
+                    return (
+                      <div key={idx} style={{ padding: '8px 10px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                        <div style={{ fontSize: '10.5px', color: '#64748b', textTransform: 'uppercase', fontWeight: 600 }}>
+                          {typeLabels[v.value_type] || v.value_type}
+                        </div>
+                        <div style={{ fontSize: '14px', fontWeight: 700, color: '#0f172a', marginTop: '2px' }}>
+                          {Number(v.value).toLocaleString('lv-LV')} €
+                        </div>
+                        {v.value_date && <div style={{ fontSize: '10px', color: '#94a3b8' }}>{v.value_date}</div>}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Zemesgrāmatas dati un piederība */}
+            {(selectedParcel.property || selectedParcel.ownership) && (
+              <div className="section-card">
+                <div className="section-title">📜 Zemesgrāmatas reģistrs</div>
+                <div style={{ fontSize: '12px', color: '#334155', display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                  {selectedParcel.property?.property_kind && (
+                    <div><strong>Īpašuma sastāvs:</strong> {selectedParcel.property.property_kind}</div>
+                  )}
+                  {selectedParcel.property?.landbook_folio && (
+                    <div><strong>Zemesgrāmatas nodalījums:</strong> {selectedParcel.property.landbook_folio} {selectedParcel.property.landbook_office ? `(${selectedParcel.property.landbook_office})` : ''}</div>
+                  )}
+                  {selectedParcel.ownership && (
+                    <div><strong>Īpašnieka statuss:</strong> {selectedParcel.ownership.ownership_status || 'Īpašnieks'} ({selectedParcel.ownership.person_status || 'fiziska persona'})</div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Energoefektivitātes sadaļa */}
             <div className="section-card">
               <div className="section-title">⚡ Ēkas energoefektivitāte (BVKB)</div>
@@ -3825,6 +4024,7 @@ export default function App() {
                             <img
                               className="hm-gal-img"
                               src={imgUrl}
+                              referrerPolicy="no-referrer"
                               alt={`Attēls ${idx + 1}`}
                               loading="lazy"
                               onError={(e) => {
