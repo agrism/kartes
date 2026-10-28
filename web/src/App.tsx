@@ -1804,7 +1804,7 @@ export default function App() {
         const popupId = 'lpc-' + (p.id || Math.round(Math.random() * 100000));
 
         let mediaHtml = '';
-        if (thumb && !thumb.startsWith('/listings/thumbs/')) {
+        if (thumb) {
           mediaHtml = `
             <div class="lpc-media">
               <img class="lpc-img" src="${thumb}" alt="${address}" onerror="this.closest('.lpc-media').style.display='none';" />
