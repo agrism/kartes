@@ -36,8 +36,18 @@ def download_file(url: str, filename: str) -> str:
     dest_path = os.path.join(CACHE_DIR, filename)
 
     if os.path.exists(dest_path) and os.path.getsize(dest_path) > 0:
-        print(f"📦 Izmanto kešoto failu: {dest_path} ({os.path.getsize(dest_path) // (1024*1024)} MB)")
-        return dest_path
+        if filename.endswith(".zip"):
+            try:
+                with zipfile.ZipFile(dest_path, 'r') as test_zf:
+                    test_zf.testzip()
+                print(f"📦 Izmanto kešoto failu: {dest_path} ({os.path.getsize(dest_path) // (1024*1024)} MB)")
+                return dest_path
+            except Exception:
+                try: os.remove(dest_path)
+                except Exception: pass
+        else:
+            print(f"📦 Izmanto kešoto failu: {dest_path} ({os.path.getsize(dest_path) // (1024*1024)} MB)")
+            return dest_path
 
     print(f"⬇️ Lejupielādē no {url} ...")
     resp = requests.get(url, stream=True, timeout=120)
